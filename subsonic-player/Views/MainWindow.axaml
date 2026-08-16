@@ -40,10 +40,17 @@
                     <TextBlock Text="Subsonic Player" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </StackPanel>
                 <TextBox Grid.Column="1" PlaceholderText="搜索歌曲 / 专辑 / 艺术家" MaxWidth="480" Margin="24,0" VerticalAlignment="Center"/>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <TextBlock Text="服务器未配置" Classes="wf-sub" VerticalAlignment="Center"/>
-                    <Button Content="切换服务器"/>
-                </StackPanel>
+                <ComboBox Grid.Column="2"
+                          ItemsSource="{Binding ServiceOptions}"
+                          SelectedItem="{Binding SelectedService}"
+                          MinWidth="160" Margin="12,0" VerticalAlignment="Center"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <Button Grid.Column="3" Content="设置" Command="{Binding OpenSettingsCommand}" Margin="12,0"/>
                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Click="OnMinimizeClick" Padding="14,0" Height="56" Background="Transparent" BorderThickness="0">

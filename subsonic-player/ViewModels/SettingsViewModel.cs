@@ -1,12 +1,30 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SubsonicPlayer.Models;
 using SubsonicPlayer.Services;
 
 namespace SubsonicPlayer.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
+    /// <summary>服务列表（供 ListBox 展示）。</summary>
+    public ObservableCollection<MusicServiceConfig> Services { get; } = new();
+
+    [ObservableProperty]
+    private MusicServiceConfig? _selectedService;
+
+    // ---- 编辑字段（绑定到右侧表单，保存时写回选中项）----
+
+    [ObservableProperty]
+    private string _name = "";
+
+    [ObservableProperty]
+    private MusicServiceType _type = MusicServiceType.Subsonic;
+
     [ObservableProperty]
     private string _lanUrl = "";
 
@@ -25,35 +43,111 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _saveStatus = "";
 
+    /// <summary>类型下拉选项（枚举名即产品名）。</summary>
+    public IReadOnlyList<MusicServiceType> TypeOptions { get; } = new[]
+    {
+        MusicServiceType.Subsonic,
+        MusicServiceType.Navidrome,
+        MusicServiceType.Jellyfin,
+        MusicServiceType.Gonic,
+    };
+
+    public bool CanRemove => Services.Count > 1;
+
     public SettingsViewModel()
     {
-        var config = AppServices.Settings.Settings.Services.FirstOrDefault();
-        if (config is not null)
-        {
-            LanUrl = config.LanUrl;
-            WanUrl = config.WanUrl;
-            Username = config.Username;
-            Password = config.Password;
-        }
-
         CrossfadeSeconds = AppServices.Playback.CrossfadeSeconds;
+        ReloadServices();
+
+        var current = AppServices.GetCurrentService();
+        SelectedService = Services.FirstOrDefault(s => s.Id == current?.Id) ?? Services.FirstOrDefault();
+    }
+
+    private void ReloadServices()
+    {
+        Services.Clear();
+        foreach (var s in AppServices.Settings.Settings.Services)
+        {
+            s.IsCurrent = s.Id == AppServices.Settings.Settings.CurrentServiceId;
+            Services.Add(s);
+        }
+        OnPropertyChanged(nameof(CanRemove));
+    }
+
+    partial void OnSelectedServiceChanged(MusicServiceConfig? value)
+    {
+        if (value is null)
+            return;
+
+        Name = value.Name;
+        Type = value.Type;
+        LanUrl = value.LanUrl;
+        WanUrl = value.WanUrl;
+        Username = value.Username;
+        Password = value.Password;
+    }
+
+    [RelayCommand]
+    private void AddService()
+    {
+        var config = new MusicServiceConfig
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = "新服务器",
+            Type = MusicServiceType.Subsonic,
+        };
+        AppServices.AddService(config);
+        ReloadServices();
+        SelectedService = Services.FirstOrDefault(s => s.Id == config.Id);
+        SaveStatus = "已添加，请填写连接信息后保存";
+    }
+
+    [RelayCommand]
+    private void RemoveService()
+    {
+        if (SelectedService is null || Services.Count <= 1)
+            return;
+
+        var removedId = SelectedService.Id;
+        AppServices.RemoveService(removedId);
+        ReloadServices();
+        SelectedService = Services.FirstOrDefault();
+        SaveStatus = "已删除";
+    }
+
+    [RelayCommand]
+    private void SetCurrent()
+    {
+        if (SelectedService is null)
+            return;
+
+        AppServices.SwitchTo(SelectedService.Id);
+        ReloadServices();
+        SaveStatus = $"已切换到「{SelectedService.Name}」";
     }
 
     [RelayCommand]
     private void Save()
     {
-        var config = AppServices.Settings.Settings.Services.FirstOrDefault();
-        if (config is not null)
-        {
-            config.LanUrl = LanUrl.Trim();
-            config.WanUrl = WanUrl.Trim();
-            config.Username = Username.Trim();
-            config.Password = Password;
-        }
+        if (SelectedService is null)
+            return;
 
+        SelectedService.Name = Name.Trim();
+        SelectedService.Type = Type;
+        SelectedService.LanUrl = LanUrl.Trim();
+        SelectedService.WanUrl = WanUrl.Trim();
+        SelectedService.Username = Username.Trim();
+        SelectedService.Password = Password;
+
+        AppServices.UpdateService(SelectedService);
         AppServices.Playback.CrossfadeSeconds = CrossfadeSeconds;
-        _ = AppServices.Settings.SaveAsync();
-        AppServices.Reconnect();
-        SaveStatus = "已保存，连接配置已更新";
+
+        // 若编辑的是当前服务，重建客户端
+        if (SelectedService.Id == AppServices.Settings.Settings.CurrentServiceId)
+            AppServices.Reconnect();
+
+        ReloadServices();
+        SelectedService = Services.FirstOrDefault(s => s.Id == SelectedService.Id);
+        SaveStatus = "已保存";
     }
 }

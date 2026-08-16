@@ -1,9 +1,12 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SubsonicPlayer.Models;
 using SubsonicPlayer.Services;
 
 namespace SubsonicPlayer.ViewModels;
@@ -27,6 +30,12 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _themeName = "深色";
+
+    /// <summary>顶栏服务切换下拉的数据源。</summary>
+    public ObservableCollection<MusicServiceConfig> ServiceOptions { get; } = new();
+
+    [ObservableProperty]
+    private MusicServiceConfig? _selectedService;
 
     [RelayCommand]
     private void ToggleTheme()
@@ -71,6 +80,11 @@ public partial class MainWindowViewModel : ViewModelBase
 
         // 订阅详情页导航
         NavigationService.Navigated += vm => CurrentPage = vm;
+
+        // 订阅服务列表/切换事件，刷新顶栏下拉
+        AppServices.ServicesChanged += ReloadServiceOptions;
+        AppServices.CurrentServiceChanged += OnCurrentServiceChanged;
+        ReloadServiceOptions();
     }
 
     [RelayCommand]
@@ -84,19 +98,59 @@ public partial class MainWindowViewModel : ViewModelBase
         if (value is null)
             return;
 
-        CurrentPage = value.Key switch
-        {
-            "NowPlaying" => new NowPlayingViewModel(),
-            "Albums" => new AlbumsViewModel(),
-            "Artists" => new ArtistsViewModel(),
-            "Songs" => new SongsViewModel(),
-            "Playlists" => new PlaylistsViewModel(),
-            "Favorites" => new FavoritesViewModel(),
-            "Radio" => new RadioViewModel(),
-            "Search" => new SearchViewModel(),
-            _ => new DiscoverViewModel(),
-        };
+        CurrentPage = CreatePage(value.Key);
     }
+
+    /// <summary>切换顶栏下拉选中服务时触发。</summary>
+    partial void OnSelectedServiceChanged(MusicServiceConfig? value)
+    {
+        if (value is null)
+            return;
+
+        if (value.Id != AppServices.Settings.Settings.CurrentServiceId)
+            AppServices.SwitchTo(value.Id);
+    }
+
+    /// <summary>刷新顶栏服务下拉并选中当前服务。</summary>
+    private void ReloadServiceOptions()
+    {
+        ServiceOptions.Clear();
+        foreach (var s in AppServices.Settings.Settings.Services)
+        {
+            s.IsCurrent = s.Id == AppServices.Settings.Settings.CurrentServiceId;
+            ServiceOptions.Add(s);
+        }
+
+        var current = AppServices.GetCurrentService();
+        SelectedService = ServiceOptions.FirstOrDefault(s => s.Id == current?.Id);
+    }
+
+    /// <summary>切换服务后：刷新下拉并重建当前页（重拉新服务的数据）。</summary>
+    private void OnCurrentServiceChanged()
+    {
+        ReloadServiceOptions();
+
+        // 刷新当前页（若在设置页则保持设置页，避免编辑中被重置）
+        if (CurrentPage is SettingsViewModel)
+            return;
+
+        var key = SelectedNav?.Key;
+        if (key is not null)
+            CurrentPage = CreatePage(key);
+    }
+
+    private static ViewModelBase CreatePage(string key) => key switch
+    {
+        "NowPlaying" => new NowPlayingViewModel(),
+        "Albums" => new AlbumsViewModel(),
+        "Artists" => new ArtistsViewModel(),
+        "Songs" => new SongsViewModel(),
+        "Playlists" => new PlaylistsViewModel(),
+        "Favorites" => new FavoritesViewModel(),
+        "Radio" => new RadioViewModel(),
+        "Search" => new SearchViewModel(),
+        _ => new DiscoverViewModel(),
+    };
 
     /// <summary>
     /// 切换当前曲目时，由 PlaybackService 传入封面主色，重建背景渐变。

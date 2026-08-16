@@ -281,6 +281,20 @@ public partial class PlaybackService : ObservableObject
         PositionSeconds = seconds;
     }
 
+    /// <summary>停止播放并清空队列（切换服务器等场景，避免旧服务的流残留）。</summary>
+    public void StopAndClear()
+    {
+        FreePreload();
+        _engine.Stop();
+        _queue.Clear();
+        _currentIndex = -1;
+        CurrentSong = null;
+        CurrentCover = null;
+        PositionSeconds = 0;
+        DurationSeconds = 0;
+        IsPlaying = false;
+    }
+
     /// <summary>睡眠定时器（分钟，0 表示关闭）。</summary>
     [RelayCommand]
     private void SetSleepTimer(string? minutesText)

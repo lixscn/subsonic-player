@@ -7,30 +7,70 @@
              x:Class="SubsonicPlayer.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
     <ScrollViewer>
-        <StackPanel Margin="24" Spacing="16" MaxWidth="560">
+        <StackPanel Margin="24" Spacing="16" MaxWidth="900">
             <TextBlock Text="设置" Classes="wf-title"/>
 
-            <!-- 服务器连接 -->
-            <TextBlock Text="服务器连接" FontSize="16" FontWeight="SemiBold"/>
+            <!-- 音乐服务 -->
+            <TextBlock Text="音乐服务" FontSize="16" FontWeight="SemiBold"/>
             <Border Classes="wf-card" Padding="16">
-                <StackPanel Spacing="10">
-                    <Grid ColumnDefinitions="100,*">
-                        <TextBlock Text="内网地址" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1" Text="{Binding LanUrl}" PlaceholderText="http://内网IP:端口"/>
-                    </Grid>
-                    <Grid ColumnDefinitions="100,*">
-                        <TextBlock Text="外网地址" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1" Text="{Binding WanUrl}" PlaceholderText="http://公网域名"/>
-                    </Grid>
-                    <Grid ColumnDefinitions="100,*">
-                        <TextBlock Text="用户名" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1" Text="{Binding Username}"/>
-                    </Grid>
-                    <Grid ColumnDefinitions="100,*">
-                        <TextBlock Text="密码" VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1" Text="{Binding Password}"/>
-                    </Grid>
-                </StackPanel>
+                <Grid ColumnDefinitions="260,*">
+                    <!-- 左侧：服务列表 -->
+                    <StackPanel Grid.Column="0" Spacing="10" Margin="0,0,16,0">
+                        <ListBox ItemsSource="{Binding Services}"
+                                 SelectedItem="{Binding SelectedService}"
+                                 MinHeight="180">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Name}"/>
+                                        <TextBlock Text="{Binding TypeLabel}" Classes="wf-sub" VerticalAlignment="Center"/>
+                                        <TextBlock Text="当前" Foreground="{StaticResource AccentBrush}"
+                                                   IsVisible="{Binding IsCurrent}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="添加" Command="{Binding AddServiceCommand}"/>
+                            <Button Content="删除" Command="{Binding RemoveServiceCommand}"
+                                    IsEnabled="{Binding CanRemove}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 右侧：编辑表单 -->
+                    <StackPanel Grid.Column="1" Spacing="10">
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Text="名称" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding Name}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Text="类型" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding TypeOptions}"
+                                      SelectedItem="{Binding Type}" HorizontalAlignment="Stretch"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Text="内网地址" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding LanUrl}" PlaceholderText="http://内网IP:端口"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Text="外网地址" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding WanUrl}" PlaceholderText="http://公网域名"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Text="用户名" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding Username}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Text="密码" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding Password}"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Content="设为当前" Command="{Binding SetCurrentCommand}"/>
+                            <Button Content="保存" Command="{Binding SaveCommand}"/>
+                            <TextBlock Text="{Binding SaveStatus}" Classes="wf-sub" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- 播放 -->
@@ -46,12 +86,6 @@
                     </Grid>
                 </StackPanel>
             </Border>
-
-            <!-- 保存 -->
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button Content="保存" Command="{Binding SaveCommand}"/>
-                <TextBlock Text="{Binding SaveStatus}" Classes="wf-sub" VerticalAlignment="Center"/>
-            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

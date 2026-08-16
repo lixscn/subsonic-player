@@ -2,12 +2,16 @@ using System.Collections.Generic;
 
 namespace SubsonicPlayer.Models;
 
-/// <summary>音乐服务类型，后期接入其他开放音乐服务时扩展。</summary>
+/// <summary>
+/// 音乐服务类型。当前四者均走 Subsonic 兼容协议（SubsonicClient），类型仅作标签/显示用途；
+/// 后续接入 Emby / Plex / AudioStation 等不同协议服务时再扩展并按 Type 分支实现。
+/// </summary>
 public enum MusicServiceType
 {
     Subsonic,
     Navidrome,
-    Custom,
+    Jellyfin,
+    Gonic,
 }
 
 public class MusicServiceConfig
@@ -19,6 +23,18 @@ public class MusicServiceConfig
     public string WanUrl { get; set; } = "";
     public string Username { get; set; } = "";
     public string Password { get; set; } = "";
+
+    /// <summary>类型的中文/友好显示名（供列表展示）。</summary>
+    public string TypeLabel => Type switch
+    {
+        MusicServiceType.Navidrome => "Navidrome",
+        MusicServiceType.Jellyfin => "Jellyfin",
+        MusicServiceType.Gonic => "Gonic",
+        _ => "Subsonic",
+    };
+
+    /// <summary>是否为当前选中使用的服务（由 UI 刷新时设置）。</summary>
+    public bool IsCurrent { get; set; }
 }
 
 public class AppSettings

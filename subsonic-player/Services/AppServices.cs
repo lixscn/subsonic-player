@@ -14,6 +14,12 @@ public static class AppServices
     public static FavoritesService Favorites { get; } = new();
     public static string DataDirectory { get; private set; } = "";
 
+    /// <summary>服务列表发生增删改时触发。</summary>
+    public static event Action? ServicesChanged;
+
+    /// <summary>当前服务切换后触发。</summary>
+    public static event Action? CurrentServiceChanged;
+
     public static void Initialize()
     {
         DataDirectory = Path.Combine(
@@ -31,7 +37,7 @@ public static class AppServices
             Settings.Settings.Services.Add(new MusicServiceConfig
             {
                 Id = "default",
-                Name = "我的服务器",
+                Name = "默认服务器",
                 Type = MusicServiceType.Subsonic,
                 LanUrl = "",
                 WanUrl = "",
@@ -42,24 +48,106 @@ public static class AppServices
             Settings.SaveAsync().GetAwaiter().GetResult();
         }
 
-        var current = Settings.Settings.Services
-                          .FirstOrDefault(s => s.Id == Settings.Settings.CurrentServiceId)
-                      ?? Settings.Settings.Services.FirstOrDefault();
-
+        var current = GetCurrentService();
         if (current is not null)
             Music = MusicServiceFactory.Create(current);
 
         _ = Favorites.LoadAsync();
     }
 
+    /// <summary>当前选中的服务配置（按 CurrentServiceId 匹配，失败回退第一个）。</summary>
+    public static MusicServiceConfig? GetCurrentService()
+        => Settings.Settings.Services
+               .FirstOrDefault(s => s.Id == Settings.Settings.CurrentServiceId)
+           ?? Settings.Settings.Services.FirstOrDefault();
+
     /// <summary>重新加载当前音乐服务（连接配置变更后调用）。</summary>
     public static void Reconnect()
     {
-        var current = Settings.Settings.Services
-                          .FirstOrDefault(s => s.Id == Settings.Settings.CurrentServiceId)
-                      ?? Settings.Settings.Services.FirstOrDefault();
-
+        var current = GetCurrentService();
         if (current is not null)
             Music = MusicServiceFactory.Create(current);
+    }
+
+    /// <summary>新增服务并保存。</summary>
+    public static void AddService(MusicServiceConfig config)
+    {
+        if (string.IsNullOrEmpty(config.Id))
+            config.Id = Guid.NewGuid().ToString("N");
+
+        Settings.Settings.Services.Add(config);
+        if (string.IsNullOrEmpty(Settings.Settings.CurrentServiceId))
+            Settings.Settings.CurrentServiceId = config.Id;
+
+        _ = Settings.SaveAsync();
+        ServicesChanged?.Invoke();
+    }
+
+    /// <summary>按 Id 更新服务并保存。</summary>
+    public static void UpdateService(MusicServiceConfig config)
+    {
+        var existing = Settings.Settings.Services.FirstOrDefault(s => s.Id == config.Id);
+        if (existing is null)
+            return;
+
+        existing.Name = config.Name;
+        existing.Type = config.Type;
+        existing.LanUrl = config.LanUrl;
+        existing.WanUrl = config.WanUrl;
+        existing.Username = config.Username;
+        existing.Password = config.Password;
+
+        _ = Settings.SaveAsync();
+        ServicesChanged?.Invoke();
+    }
+
+    /// <summary>删除服务（最后一个禁止删除；删除当前服务时自动切到剩余第一个并重建）。</summary>
+    public static void RemoveService(string id)
+    {
+        var list = Settings.Settings.Services;
+        if (list.Count <= 1)
+            return;
+
+        var removingCurrent = Settings.Settings.CurrentServiceId == id;
+        list.RemoveAll(s => s.Id == id);
+
+        if (removingCurrent)
+        {
+            Settings.Settings.CurrentServiceId = list[0].Id;
+            _ = Settings.SaveAsync();
+            RebuildForCurrent();
+            CurrentServiceChanged?.Invoke();
+        }
+        else
+        {
+            _ = Settings.SaveAsync();
+        }
+
+        ServicesChanged?.Invoke();
+    }
+
+    /// <summary>切换当前服务：重建客户端、停止播放、重载收藏，并通知 UI 刷新。</summary>
+    public static void SwitchTo(string id)
+    {
+        var target = Settings.Settings.Services.FirstOrDefault(s => s.Id == id);
+        if (target is null || Settings.Settings.CurrentServiceId == id)
+            return;
+
+        Settings.Settings.CurrentServiceId = id;
+        _ = Settings.SaveAsync();
+        RebuildForCurrent();
+        CurrentServiceChanged?.Invoke();
+    }
+
+    /// <summary>按当前服务重建客户端并重置播放/收藏状态。</summary>
+    private static void RebuildForCurrent()
+    {
+        var current = GetCurrentService();
+        if (current is not null)
+            Music = MusicServiceFactory.Create(current);
+
+        Playback.StopAndClear();
+        Favorites.Reset();
+        _ = Favorites.LoadAsync();
     }
 }

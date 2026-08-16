@@ -28,6 +28,13 @@ public class FavoritesService
             _songIds.Remove(songId);
     }
 
+    /// <summary>清空缓存并允许重新加载（切换服务器后调用）。</summary>
+    public void Reset()
+    {
+        _loadTask = null;
+        _songIds.Clear();
+    }
+
     public Task LoadAsync() => _loadTask ??= LoadInternalAsync();
 
     private async Task LoadInternalAsync()
