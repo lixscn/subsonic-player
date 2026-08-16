@@ -12,6 +12,7 @@ public static class AppServices
     public static IMusicService? Music { get; private set; }
     public static PlaybackService Playback { get; private set; } = null!;
     public static FavoritesService Favorites { get; } = new();
+    public static LibraryDatabase Library { get; private set; } = null!;
     public static string DataDirectory { get; private set; } = "";
 
     /// <summary>服务列表发生增删改时触发。</summary>
@@ -29,6 +30,10 @@ public static class AppServices
 
         Settings = new SettingsService(DataDirectory);
         Playback = new PlaybackService();
+
+        // 初始化 SQLite 曲库缓存（建表，幂等）
+        Library = new LibraryDatabase(DataDirectory);
+        Library.Initialize();
 
         // 首次运行：若尚无服务器配置，则创建一个空模板，由用户在设置页填写连接信息。
         // 服务器地址 / 用户名 / 密码一律不硬编码，也不写入本仓库。
