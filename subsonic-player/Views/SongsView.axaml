@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:SubsonicPlayer.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="SubsonicPlayer.Views.SongsView"
+             x:DataType="vm:SongsViewModel">
+    <DockPanel Margin="24">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+            <TextBlock Text="歌曲" Classes="wf-title"/>
+            <Button Content="全部播放" Command="{Binding PlayAllCommand}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Status}" Classes="wf-sub" IsVisible="{Binding HasStatus}" Margin="0,0,0,8"/>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,8,0,0">
+            <Button Content="上一页" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding HasPreviousPage}"/>
+            <TextBlock Text="{Binding PageInfo}" Classes="wf-sub" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding PageInput}" Width="40" VerticalAlignment="Center"/>
+            <Button Content="跳转" Command="{Binding JumpPageCommand}"/>
+            <Button Content="下一页" Command="{Binding NextPageCommand}" IsEnabled="{Binding HasNextPage}"/>
+        </StackPanel>
+
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Songs}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="2"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SongItemViewModel">
+                        <Button Classes="transparent" Command="{Binding PlayCommand}">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="立即播放" Command="{Binding PlayCommand}"/>
+                                    <MenuItem Header="下一首播放" Command="{Binding PlayNextCommand}"/>
+                                    <MenuItem Header="添加到队尾" Command="{Binding AddToQueueCommand}"/>
+                                    <Separator/>
+                                    <MenuItem Header="收藏 / 取消收藏" Command="{Binding ToggleFavoriteCommand}"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                            <Grid ColumnDefinitions="40,36,200,48,32" Margin="0,4,24,4">
+                                <TextBlock Text="{Binding IndexText}" Classes="wf-sub" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                <Border Grid.Column="1" Width="28" Height="28" CornerRadius="4" Background="{DynamicResource BgCardBrush}" ClipToBounds="True" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <Image Source="{Binding Cover}" Stretch="UniformToFill"/>
+                                </Border>
+                                <Grid Grid.Column="2" Margin="8,0,0,0" RowDefinitions="Auto,Auto" RowSpacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="1" Text="{Binding Artist}" Classes="wf-sub" TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                                <TextBlock Grid.Column="3" Text="{Binding DurationText}" Classes="wf-sub" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                                <Button Grid.Column="4" Width="24" Height="24" Padding="0" Background="Transparent" BorderThickness="0" Command="{Binding ToggleFavoriteCommand}" ToolTip.Tip="收藏">
+                                    <Grid>
+                                        <Path Data="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" Fill="{DynamicResource TextSecondaryBrush}" Width="16" Height="16" Stretch="Uniform" IsVisible="{Binding IsFavorite, Converter={x:Static conv:BoolConverters.Not}}"/>
+                                        <Path Data="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" Fill="#EF4444" Width="16" Height="16" Stretch="Uniform" IsVisible="{Binding IsFavorite}"/>
+                                    </Grid>
+                                </Button>
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

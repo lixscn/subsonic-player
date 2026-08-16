@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:SubsonicPlayer.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="SubsonicPlayer.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="16" MaxWidth="560">
+            <TextBlock Text="设置" Classes="wf-title"/>
+
+            <!-- 服务器连接 -->
+            <TextBlock Text="服务器连接" FontSize="16" FontWeight="SemiBold"/>
+            <Border Classes="wf-card" Padding="16">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="100,*">
+                        <TextBlock Text="内网地址" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Text="{Binding LanUrl}" PlaceholderText="http://内网IP:端口"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="100,*">
+                        <TextBlock Text="外网地址" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Text="{Binding WanUrl}" PlaceholderText="http://公网域名"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="100,*">
+                        <TextBlock Text="用户名" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Text="{Binding Username}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="100,*">
+                        <TextBlock Text="密码" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Text="{Binding Password}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 播放 -->
+            <TextBlock Text="播放" FontSize="16" FontWeight="SemiBold"/>
+            <Border Classes="wf-card" Padding="16">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="100,*">
+                        <TextBlock Text="交叉淡入淡出" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                            <Slider Minimum="0" Maximum="15" Value="{Binding CrossfadeSeconds}" Width="200" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding CrossfadeSeconds, StringFormat={}{0:F0} 秒}" Classes="wf-sub" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 保存 -->
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="保存" Command="{Binding SaveCommand}"/>
+                <TextBlock Text="{Binding SaveStatus}" Classes="wf-sub" VerticalAlignment="Center"/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

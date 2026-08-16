@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:SubsonicPlayer.ViewModels"
+             xmlns:models="using:SubsonicPlayer.Models"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="SubsonicPlayer.Views.NowPlayingView"
+             x:DataType="vm:NowPlayingViewModel">
+    <Grid ColumnDefinitions="*,340" Margin="24">
+        <!-- 左：封面 + 曲目信息 + 进度 -->
+        <StackPanel Spacing="20" VerticalAlignment="Center">
+            <Border Width="320" Height="320" CornerRadius="8" Background="{DynamicResource BgCardBrush}" ClipToBounds="True" HorizontalAlignment="Center">
+                <Image Source="{Binding Playback.CurrentCover}" Stretch="UniformToFill"/>
+            </Border>
+            <StackPanel Spacing="6" HorizontalAlignment="Center" MaxWidth="400">
+                <TextBlock Text="{Binding Playback.CurrentTitle}" FontSize="22" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
+                <TextBlock Text="{Binding Playback.CurrentSong.Artist}" Classes="wf-sub" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <Grid ColumnDefinitions="Auto,*,Auto" Width="400" HorizontalAlignment="Center">
+                <TextBlock Text="{Binding Playback.PositionText}" Classes="wf-sub" VerticalAlignment="Center"/>
+                <Slider Grid.Column="1" Margin="10,0" Minimum="0" Maximum="{Binding Playback.DurationSeconds, FallbackValue=1}" Value="{Binding Playback.PositionSeconds}"/>
+                <TextBlock Grid.Column="2" Text="{Binding Playback.DurationText}" Classes="wf-sub" VerticalAlignment="Center"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- 右：播放队列 -->
+        <Border Grid.Column="1" Classes="wf-card" Padding="12">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="播放队列" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <ListBox ItemsSource="{Binding Playback.Queue}" Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:Song">
+                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" Padding="4,2"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

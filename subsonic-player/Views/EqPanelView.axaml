@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:SubsonicPlayer.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="460"
+             x:Class="SubsonicPlayer.Views.EqPanelView"
+             x:DataType="vm:EqPanelViewModel">
+
+    <UserControl.Resources>
+        <vm:SpectrumHeightConverter x:Key="SpecConv"/>
+    </UserControl.Resources>
+
+    <Border Classes="wf-card" Padding="16">
+        <StackPanel Spacing="16">
+            <!-- 标题 + 预设 -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="均衡器" FontSize="18" FontWeight="SemiBold"/>
+                <ComboBox ItemsSource="{Binding PresetNames}" SelectedItem="{Binding SelectedPreset}" Width="120"/>
+            </StackPanel>
+
+            <!-- 频谱 -->
+            <Border Height="80" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="6" Padding="4">
+                <ItemsControl ItemsSource="{Binding Playback.Spectrum}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:Double">
+                            <Rectangle Width="3" Height="{Binding ., Converter={StaticResource SpecConv}, ConverterParameter=70}"
+                                       Fill="{StaticResource AccentBrush}" VerticalAlignment="Bottom" Margin="1,0" RadiusX="1" RadiusY="1"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- 10 段 EQ -->
+            <Grid ColumnDefinitions="*,*,*,*,*,*,*,*,*,*">
+                <StackPanel Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq1}"/><TextBlock Text="31" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq2}"/><TextBlock Text="62" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="2" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq3}"/><TextBlock Text="125" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="3" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq4}"/><TextBlock Text="250" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="4" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq5}"/><TextBlock Text="500" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="5" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq6}"/><TextBlock Text="1k" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="6" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq7}"/><TextBlock Text="2k" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="7" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq8}"/><TextBlock Text="4k" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="8" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq9}"/><TextBlock Text="8k" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+                <StackPanel Grid.Column="9" Spacing="4"><Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Minimum="-15" Maximum="15" Value="{Binding Eq10}"/><TextBlock Text="16k" Classes="wf-sub" HorizontalAlignment="Center"/></StackPanel>
+            </Grid>
+
+            <!-- 速度 / 音调 -->
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="速度" Width="36" VerticalAlignment="Center"/>
+                    <Slider Minimum="0.5" Maximum="2.0" Value="{Binding Playback.Tempo}" Width="180" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Playback.Tempo, StringFormat={}{0:F2}x}" Classes="wf-sub" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="音调" Width="36" VerticalAlignment="Center"/>
+                    <Slider Minimum="-12" Maximum="12" Value="{Binding Playback.Pitch}" Width="180" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Playback.Pitch, StringFormat={}{0:F0}}" Classes="wf-sub" VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- DSP -->
+            <StackPanel Orientation="Horizontal" Spacing="20">
+                <StackPanel Spacing="4"><TextBlock Text="混响" Classes="wf-sub"/><ToggleSwitch IsChecked="{Binding Playback.ReverbEnabled}"/></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Text="回声" Classes="wf-sub"/><ToggleSwitch IsChecked="{Binding Playback.EchoEnabled}"/></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Text="合唱" Classes="wf-sub"/><ToggleSwitch IsChecked="{Binding Playback.ChorusEnabled}"/></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Text="压缩" Classes="wf-sub"/><ToggleSwitch IsChecked="{Binding Playback.CompressorEnabled}"/></StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

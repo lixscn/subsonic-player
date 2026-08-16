@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:SubsonicPlayer.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="SubsonicPlayer.Views.ArtistDetailView"
+             x:DataType="vm:ArtistDetailViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="20">
+            <Button Content="返回" Command="{Binding BackCommand}" HorizontalAlignment="Left"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="20">
+                <Border Width="160" Height="160" CornerRadius="80" Background="{DynamicResource BgCardBrush}" ClipToBounds="True">
+                    <Image Source="{Binding Cover}" Stretch="UniformToFill"/>
+                </Border>
+                <StackPanel Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontSize="26"/>
+                    <TextBlock Text="{Binding Albums.Count, StringFormat={}{0} 张专辑}" Classes="wf-sub"/>
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Text="专辑" FontSize="16" FontWeight="SemiBold"/>
+            <ItemsControl ItemsSource="{Binding Albums}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AlbumItemViewModel">
+                        <Button Classes="transparent" Command="{Binding OpenDetailCommand}">
+                            <StackPanel Width="160" Margin="8" Spacing="8">
+                                <Border Width="160" Height="160" CornerRadius="8" Background="{DynamicResource BgCardBrush}" ClipToBounds="True">
+                                    <Image Source="{Binding Cover}" Stretch="UniformToFill"/>
+                                </Border>
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
+                                <TextBlock Text="{Binding Artist}" Classes="wf-sub" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
