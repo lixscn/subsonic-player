@@ -17,11 +17,11 @@
         <Grid DockPanel.Dock="Top" ColumnDefinitions="40,36,280,48,32" Margin="0,0,0,8">
             <TextBlock Text="#" Classes="wf-sub"/>
             <TextBlock Grid.Column="1" Classes="wf-sub"/>
-            <TextBlock Grid.Column="2" Text="标题" Classes="wf-sub"/>
+            <TextBlock Grid.Column="2" Text="标题" Classes="wf-sub" Margin="8,0,0,0"/>
             <TextBlock Grid.Column="3" Text="时长" Classes="wf-sub" HorizontalAlignment="Right"/>
         </Grid>
 
-        <ListBox ItemsSource="{Binding FavoriteSongs}">
+        <ListBox ItemsSource="{Binding FavoriteSongs}" Padding="0">
             <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:SongItemViewModel">
                     <Button Classes="transparent" Command="{Binding PlayCommand}">

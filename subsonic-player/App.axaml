@@ -89,6 +89,7 @@
         <!-- 列表项去除默认内边距，保证与表头对齐 -->
         <Style Selector="ListBoxItem">
             <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
         </Style>
     </Application.Styles>
 </Application>
