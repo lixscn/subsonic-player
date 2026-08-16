@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
@@ -41,4 +41,9 @@
     <PackageReference Include="Semi.Avalonia" Version="12.0.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
   </ItemGroup>
+
+  <!-- 修复 Avalonia 增量构建偶发跳过 XAML 资源生成、导致运行时报 "No precompiled XAML" 的问题：每次构建前删除旧资源文件强制重生成 -->
+  <Target Name="ForceAvaloniaResourcesRegeneration" BeforeTargets="GenerateAvaloniaResources">
+    <Delete Files="$(IntermediateOutputPath)Avalonia\resources" Condition="Exists('$(IntermediateOutputPath)Avalonia\resources')" />
+  </Target>
 </Project>

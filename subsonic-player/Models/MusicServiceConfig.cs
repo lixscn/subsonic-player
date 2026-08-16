@@ -5,8 +5,8 @@ using SubsonicPlayer.Services;
 namespace SubsonicPlayer.Models;
 
 /// <summary>
-/// 音乐服务类型。当前四者均走 Subsonic 兼容协议（SubsonicClient），类型仅作标签/显示用途；
-/// 后续接入 Emby / Plex / AudioStation 等不同协议服务时再扩展并按 Type 分支实现。
+/// 音乐服务类型。Subsonic / Navidrome / Jellyfin / Gonic 走 Subsonic 兼容协议（SubsonicClient）；
+/// Emby / Plex 各走其原生协议（对应 *MusicService 实现）。
 /// </summary>
 public enum MusicServiceType
 {
@@ -14,6 +14,8 @@ public enum MusicServiceType
     Navidrome,
     Jellyfin,
     Gonic,
+    Emby,
+    Plex,
 }
 
 public class MusicServiceConfig
@@ -29,12 +31,18 @@ public class MusicServiceConfig
     [JsonConverter(typeof(EncryptedPasswordConverter))]
     public string Password { get; set; } = "";
 
+    /// <summary>API Key / Token（Emby API Key、Plex Token 等），经 DPAPI 加密存储。</summary>
+    [JsonConverter(typeof(EncryptedPasswordConverter))]
+    public string ApiKey { get; set; } = "";
+
     /// <summary>类型的中文/友好显示名（供列表展示）。</summary>
     public string TypeLabel => Type switch
     {
         MusicServiceType.Navidrome => "Navidrome",
         MusicServiceType.Jellyfin => "Jellyfin",
         MusicServiceType.Gonic => "Gonic",
+        MusicServiceType.Emby => "Emby",
+        MusicServiceType.Plex => "Plex",
         _ => "Subsonic",
     };
 
@@ -42,8 +50,26 @@ public class MusicServiceConfig
     public bool IsCurrent { get; set; }
 }
 
+/// <summary>流式网络质量（映射到 stream 端点的 maxBitRate / format）。</summary>
+public enum NetworkQuality
+{
+    Original,
+    High,
+    Medium,
+    Low,
+}
+
 public class AppSettings
 {
     public List<MusicServiceConfig> Services { get; set; } = new();
     public string CurrentServiceId { get; set; } = "";
+
+    /// <summary>流式网络质量。</summary>
+    public NetworkQuality NetworkQuality { get; set; } = NetworkQuality.Original;
+
+    /// <summary>下载目录（为空时回退 %USERPROFILE%\Music）。</summary>
+    public string DownloadDir { get; set; } = "";
+
+    /// <summary>SMTC（任务栏媒体控制）开关。</summary>
+    public bool SmtcEnabled { get; set; } = true;
 }

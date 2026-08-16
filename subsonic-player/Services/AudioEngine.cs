@@ -55,7 +55,8 @@ public class AudioEngine
             return 0;
 
         // tempo 包装（tempo=1.0 默认不改变，支持速度/音调调整）
-        var tempo = BassFxNative.BASS_FX_TempoCreate(source, (uint)(BASSFlag.StreamDecode | BASSFlag.SampleFloat));
+        // FreSource：释放 tempo 流时自动释放 source 流，避免 URL 流泄漏（内存 + 网络线程）
+        var tempo = BassFxNative.BASS_FX_TempoCreate(source, (uint)(BASSFlag.StreamDecode | BASSFlag.SampleFloat) | BassFxNative.FreSource);
         if (tempo == 0)
             return source; // tempo 创建失败时退化为原始流
 
@@ -85,6 +86,10 @@ public class AudioEngine
         _currentChannel = newChannel;
         BassMixNative.BASS_Mixer_StreamAddChannel(_mixer, newChannel, (uint)BASSMixFlag.MixerNoRampIn);
         BassNative.BASS_ChannelSetAttribute(newChannel, BASSAttribute.Volume, _volume);
+
+        // mixer 因 MixerEnd 已停止时（兜底切歌场景），需重新启动
+        if (BassNative.BASS_ChannelIsActive(_mixer) == BASSActive.Stopped)
+            BassNative.BASS_ChannelPlay(_mixer, false);
         return true;
     }
 
@@ -120,6 +125,10 @@ public class AudioEngine
 
             _ = RemoveChannelAfterAsync(old, seconds);
         }
+
+        // mixer 因 MixerEnd 已停止时，重新启动
+        if (BassNative.BASS_ChannelIsActive(_mixer) == BASSActive.Stopped)
+            BassNative.BASS_ChannelPlay(_mixer, false);
     }
 
     private async Task RemoveChannelAfterAsync(int channel, double seconds)
@@ -147,6 +156,9 @@ public class AudioEngine
     }
 
     public bool IsPlaying => _mixer != 0 && BassNative.BASS_ChannelIsActive(_mixer) == BASSActive.Playing;
+
+    /// <summary>mixer 是否已停止（歌曲结束 / 流中断导致，区别于暂停 Paused 与缓冲 Stalled）。</summary>
+    public bool IsStopped => _mixer != 0 && BassNative.BASS_ChannelIsActive(_mixer) == BASSActive.Stopped;
 
     public bool HasStream => _currentChannel != 0;
 

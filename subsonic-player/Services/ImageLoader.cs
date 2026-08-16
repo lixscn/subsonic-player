@@ -9,6 +9,8 @@ namespace SubsonicPlayer.Services;
 /// <summary>封面异步加载 + 内存缓存。</summary>
 public static class ImageLoader
 {
+    private const int MaxCacheSize = 300;
+
     private static readonly HttpClient Http = new();
     private static readonly ConcurrentDictionary<string, Bitmap> Cache = new();
 
@@ -24,6 +26,10 @@ public static class ImageLoader
             var bytes = await Http.GetByteArrayAsync(url);
             using var ms = new MemoryStream(bytes);
             var bmp = new Bitmap(ms);
+
+            // 缓存超限时清空，防止长时间播放多首歌曲导致内存无限增长
+            if (Cache.Count >= MaxCacheSize)
+                Cache.Clear();
             Cache[url] = bmp;
             return bmp;
         }

@@ -251,6 +251,28 @@ public class SubsonicClient
         return doc.Root?.Attribute("status")?.Value == "ok";
     }
 
+    /// <summary>向歌单添加歌曲。</summary>
+    public async Task<bool> AddSongsToPlaylistAsync(string playlistId, IEnumerable<string> songIds, CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("updatePlaylist", new Dictionary<string, string>
+        {
+            ["playlistId"] = playlistId,
+            ["songIdToAdd"] = string.Join(",", songIds),
+        }, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
+    /// <summary>从歌单移除歌曲（按索引）。</summary>
+    public async Task<bool> RemoveFromPlaylistAsync(string playlistId, IEnumerable<int> indexes, CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("updatePlaylist", new Dictionary<string, string>
+        {
+            ["playlistId"] = playlistId,
+            ["songIndexToRemove"] = string.Join(",", indexes),
+        }, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
     public async Task<bool> ScrobbleAsync(string songId, bool submission = false, CancellationToken ct = default)
     {
         var doc = await GetXmlAsync("scrobble", new Dictionary<string, string> { ["id"] = songId, ["submission"] = submission ? "true" : "false" }, ct);
@@ -287,6 +309,207 @@ public class SubsonicClient
         var doc = await GetXmlAsync("unstar", new Dictionary<string, string> { ["id"] = id }, ct);
         return doc.Root?.Attribute("status")?.Value == "ok";
     }
+
+    /// <summary>评分（1–5）。</summary>
+    public async Task<bool> SetRatingAsync(string id, int rating, CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("setRating", new Dictionary<string, string>
+        {
+            ["id"] = id,
+            ["rating"] = Math.Clamp(rating, 1, 5).ToString(),
+        }, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
+    /// <summary>按歌曲 id 获取歌词（OpenSubsonic getLyricsBySongId，失败时回退 getLyrics）。</summary>
+    public async Task<Lyrics?> GetLyricsAsync(string artist, string title, string? songId = null, CancellationToken ct = default)
+    {
+        XDocument? doc = null;
+
+        if (!string.IsNullOrEmpty(songId))
+        {
+            try
+            {
+                doc = await GetXmlAsync("getLyricsBySongId", new Dictionary<string, string> { ["id"] = songId! }, ct);
+            }
+            catch
+            {
+                doc = null;
+            }
+        }
+
+        if (doc is null && !string.IsNullOrEmpty(artist) && !string.IsNullOrEmpty(title))
+        {
+            doc = await GetXmlAsync("getLyrics", new Dictionary<string, string>
+            {
+                ["artist"] = artist,
+                ["title"] = title,
+            }, ct);
+        }
+
+        return doc is null ? null : ParseLyrics(doc);
+    }
+
+    private static Lyrics? ParseLyrics(XDocument doc)
+    {
+        var ns = doc.Root!.Name.Namespace;
+        var result = new Lyrics();
+
+        // 结构化歌词（OpenSubsonic structuredLyrics）
+        var structured = doc.Descendants(ns + "structuredLyrics").FirstOrDefault();
+        if (structured is not null)
+        {
+            result.DisplayArtist = A(structured, "displayArtist");
+            result.DisplayTitle = A(structured, "displayTitle");
+            var offset = 0.0;
+            var offsetRaw = A(structured, "offset");
+            if (double.TryParse(offsetRaw, out var off))
+                offset = off;
+
+            foreach (var line in structured.Elements(ns + "line"))
+            {
+                var startRaw = A(line, "start");
+                if (!double.TryParse(startRaw, out var startMs))
+                    startMs = 0;
+                result.Lines.Add(new LyricsLine
+                {
+                    StartSeconds = (startMs + offset) / 1000.0,
+                    Text = line.Value ?? "",
+                });
+            }
+            return result;
+        }
+
+        // 非结构化歌词
+        var lyricsEl = doc.Descendants(ns + "lyrics").FirstOrDefault();
+        if (lyricsEl is not null)
+        {
+            result.DisplayArtist = A(lyricsEl, "artist");
+            result.DisplayTitle = A(lyricsEl, "title");
+            result.Text = lyricsEl.Value ?? "";
+            return result;
+        }
+
+        return null;
+    }
+
+    /// <summary>获取所有分享链接。</summary>
+    public async Task<List<Share>> GetSharesAsync(CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("getShares", ct: ct);
+        var ns = doc.Root!.Name.Namespace;
+        return doc.Descendants(ns + "share").Select(ParseShare).ToList();
+    }
+
+    /// <summary>创建分享链接（id 可为歌曲/专辑/歌单 id）。</summary>
+    public async Task<List<Share>> CreateShareAsync(string id, string? description = null, CancellationToken ct = default)
+    {
+        var extra = new Dictionary<string, string> { ["id"] = id };
+        if (!string.IsNullOrEmpty(description))
+            extra["description"] = description;
+
+        var doc = await GetXmlAsync("createShare", extra, ct);
+        var ns = doc.Root!.Name.Namespace;
+        return doc.Descendants(ns + "share").Select(ParseShare).ToList();
+    }
+
+    /// <summary>删除分享链接。</summary>
+    public async Task<bool> DeleteShareAsync(string id, CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("deleteShare", new Dictionary<string, string> { ["id"] = id }, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
+    private static Share ParseShare(XElement el)
+    {
+        var ns = el.Name.Namespace;
+        return new Share
+        {
+            Id = A(el, "id"),
+            Url = A(el, "url"),
+            Description = A(el, "description"),
+            Username = A(el, "username"),
+            VisitCount = Ai(el, "visitCount"),
+            Songs = el.Elements(ns + "entry").Select(ParseSong).ToList(),
+        };
+    }
+
+    /// <summary>获取播放书签。</summary>
+    public async Task<List<Bookmark>> GetBookmarksAsync(CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("getBookmarks", ct: ct);
+        var ns = doc.Root!.Name.Namespace;
+        return doc.Descendants(ns + "bookmark").Select(ParseBookmark).ToList();
+    }
+
+    /// <summary>创建播放书签（position 毫秒）。</summary>
+    public async Task<bool> CreateBookmarkAsync(string id, long position, string? comment = null, CancellationToken ct = default)
+    {
+        var extra = new Dictionary<string, string>
+        {
+            ["id"] = id,
+            ["position"] = position.ToString(),
+        };
+        if (!string.IsNullOrEmpty(comment))
+            extra["comment"] = comment;
+
+        var doc = await GetXmlAsync("createBookmark", extra, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
+    /// <summary>删除播放书签。</summary>
+    public async Task<bool> DeleteBookmarkAsync(string id, CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("deleteBookmark", new Dictionary<string, string> { ["id"] = id }, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
+    private static Bookmark ParseBookmark(XElement el)
+    {
+        var ns = el.Name.Namespace;
+        return new Bookmark
+        {
+            Position = long.TryParse(A(el, "position"), out var pos) ? pos : 0,
+            Username = A(el, "username"),
+            Comment = A(el, "comment"),
+            Created = ParseDate(A(el, "created")),
+            Changed = ParseDate(A(el, "changed")),
+            Songs = el.Elements(ns + "entry").Select(ParseSong).ToList(),
+        };
+    }
+
+    private static DateTime? ParseDate(string? s)
+        => long.TryParse(s, out var ms) ? DateTimeOffset.FromUnixTimeMilliseconds(ms).LocalDateTime : null;
+
+    /// <summary>保存播放队列到云端（OpenSubsonic）。</summary>
+    public async Task<bool> SavePlayQueueAsync(IEnumerable<string> songIds, string? current, long positionMs, CancellationToken ct = default)
+    {
+        var extra = new Dictionary<string, string>
+        {
+            ["id"] = string.Join(",", songIds),
+            ["position"] = positionMs.ToString(),
+        };
+        if (!string.IsNullOrEmpty(current))
+            extra["current"] = current!;
+
+        var doc = await GetXmlAsync("savePlayQueue", extra, ct);
+        return doc.Root?.Attribute("status")?.Value == "ok";
+    }
+
+    /// <summary>获取云端播放队列（OpenSubsonic）。返回 null 表示不支持或无队列。</summary>
+    public async Task<List<Song>?> GetPlayQueueAsync(CancellationToken ct = default)
+    {
+        var doc = await GetXmlAsync("getPlayQueue", ct: ct);
+        var ns = doc.Root!.Name.Namespace;
+        var queue = doc.Descendants(ns + "playQueue").FirstOrDefault();
+        if (queue is null)
+            return null;
+        return queue.Elements(ns + "entry").Select(ParseSong).ToList();
+    }
+
+    /// <summary>下载原文件 URL（download 端点）。</summary>
+    public string GetDownloadUrl(string songId)
+        => BuildUrl("download", new Dictionary<string, string> { ["id"] = songId });
 
     // ---- 解析辅助 ----
 

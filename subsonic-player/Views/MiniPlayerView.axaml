@@ -1,27 +1,62 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="96"
-             x:Class="SubsonicPlayer.Views.MiniPlayerView">
-    <Border Classes="wf-card" Padding="12">
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:SubsonicPlayer.ViewModels"
+        xmlns:conv="using:Avalonia.Data.Converters"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="120"
+        x:Class="SubsonicPlayer.Views.MiniPlayerView"
+        x:DataType="vm:MiniPlayerViewModel"
+        Title="迷你播放器"
+        Width="420" Height="120"
+        CanResize="False"
+        WindowStartupLocation="Manual"
+        WindowDecorations="BorderOnly"
+        Topmost="True"
+        Background="{DynamicResource BgAppBrush}">
+
+    <Border Classes="wf-card" Margin="8" Padding="12" PointerPressed="OnPointerPressed">
         <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-            <Border Width="56" Height="56" Classes="wf"/>
-            <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Spacing="2">
-                <TextBlock Text="曲目标题" FontSize="14"/>
-                <TextBlock Text="艺术家" Classes="wf-sub"/>
+            <!-- 封面 -->
+            <Border Width="64" Height="64" CornerRadius="6" Background="{DynamicResource BgCardBrush}" ClipToBounds="True">
+                <Image Source="{Binding Playback.CurrentCover}" Stretch="UniformToFill"/>
+            </Border>
+
+            <!-- 标题 + 进度 -->
+            <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Spacing="4">
+                <TextBlock Text="{Binding Playback.CurrentTitle}" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Text="{Binding Playback.CurrentSong.Artist}" Classes="wf-sub" TextTrimming="CharacterEllipsis"/>
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Text="{Binding Playback.PositionText}" Classes="wf-sub" VerticalAlignment="Center"/>
+                    <Slider Grid.Column="1" Margin="8,0" Minimum="0" Maximum="{Binding Playback.DurationSeconds, FallbackValue=1}"
+                            Value="{Binding Playback.PositionSeconds}" PointerReleased="OnProgressReleased"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Playback.DurationText}" Classes="wf-sub" VerticalAlignment="Center"/>
+                </Grid>
             </StackPanel>
+
+            <!-- 控制 -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button Padding="6">
-                    <Path Data="M6 6h2v12H6zm3.5 6l8.5 6V6z" Fill="{DynamicResource TextPrimaryBrush}" Width="18" Height="18" Stretch="Uniform"/>
+                <Button Command="{Binding Playback.PreviousCommand}" Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <Path Data="M6 6h2v12H6zm3.5 6l8.5 6V6z" Fill="{DynamicResource TextPrimaryBrush}" Width="20" Height="20" Stretch="Uniform"/>
                 </Button>
-                <Button Background="{StaticResource AccentBrush}" CornerRadius="16" Width="32" Height="32" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
-                    <Path Data="M8 5v14l11-7z" Fill="#0E0E11" Width="16" Height="16" Stretch="Uniform"/>
+                <Button Command="{Binding Playback.PlayPauseCommand}" Background="{StaticResource AccentBrush}" CornerRadius="18" Width="36" Height="36" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <Grid>
+                        <Path Data="M8 5v14l11-7z" Fill="#0E0E11" Width="18" Height="18" Stretch="Uniform"
+                              IsVisible="{Binding Playback.IsPlaying, Converter={x:Static conv:BoolConverters.Not}}"/>
+                        <Path Data="M6 5h4v14H6zM14 5h4v14h-4z" Fill="#0E0E11" Width="18" Height="18" Stretch="Uniform"
+                              IsVisible="{Binding Playback.IsPlaying}"/>
+                    </Grid>
                 </Button>
-                <Button Padding="6">
-                    <Path Data="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z" Fill="{DynamicResource TextPrimaryBrush}" Width="18" Height="18" Stretch="Uniform"/>
+                <Button Command="{Binding Playback.NextCommand}" Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <Path Data="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z" Fill="{DynamicResource TextPrimaryBrush}" Width="20" Height="20" Stretch="Uniform"/>
+                </Button>
+                <Button Click="OnExpandClick" ToolTip.Tip="展开到主窗口" Width="28" Height="28" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <Path Data="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" Fill="{DynamicResource TextSecondaryBrush}" Width="18" Height="18" Stretch="Uniform"/>
+                </Button>
+                <Button Click="OnCloseClick" ToolTip.Tip="关闭" Width="28" Height="28" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <Path Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" Fill="{DynamicResource TextSecondaryBrush}" Width="16" Height="16" Stretch="Uniform"/>
                 </Button>
             </StackPanel>
         </Grid>
     </Border>
-</UserControl>
+</Window>

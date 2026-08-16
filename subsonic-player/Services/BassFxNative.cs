@@ -90,6 +90,9 @@ internal static class BassFxNative
 {
     private const string Lib = "bass_fx";
 
+    /// <summary>BASS_FX_FREESOURCE：释放 tempo 流时自动释放 source 流（否则 source 泄漏）。</summary>
+    public const uint FreSource = 0x10000;
+
     [DllImport(Lib, EntryPoint = "BASS_FX_GetVersion")]
     public static extern uint BASS_FX_GetVersion();
 

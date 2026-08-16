@@ -39,7 +39,7 @@
                     <Border Width="10" Height="10" Background="{StaticResource AccentBrush}" CornerRadius="5"/>
                     <TextBlock Text="Subsonic Player" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </StackPanel>
-                <TextBox Grid.Column="1" PlaceholderText="搜索歌曲 / 专辑 / 艺术家" MaxWidth="480" Margin="24,0" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding SearchText}" PlaceholderText="搜索歌曲 / 专辑 / 艺术家" MaxWidth="480" Margin="24,0" VerticalAlignment="Center" KeyDown="OnSearchKeyDown"/>
                 <ComboBox Grid.Column="2"
                           ItemsSource="{Binding ServiceOptions}"
                           SelectedItem="{Binding SelectedService}"
@@ -158,6 +158,9 @@
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>
+                    </Button>
+                    <Button Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" ToolTip.Tip="转到迷你播放器" Click="OnMiniPlayerClick">
+                        <Path Data="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" Fill="{DynamicResource TextSecondaryBrush}" Width="18" Height="18" Stretch="Uniform"/>
                     </Button>
                     <Slider Width="80" VerticalAlignment="Center" Minimum="0" Maximum="1"
                             Value="{Binding Playback.Volume, Mode=TwoWay}"/>

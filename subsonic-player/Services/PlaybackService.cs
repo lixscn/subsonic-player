@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -30,6 +31,9 @@ public partial class PlaybackService : ObservableObject
     private readonly DispatcherTimer _progressTimer;
     private readonly DispatcherTimer _spectrumTimer;
     private DispatcherTimer? _sleepTimer;
+    private string? _submittedSongId;
+    private double _resumePositionSeconds;
+    private DateTime _lastStateSave = DateTime.MinValue;
 
     [ObservableProperty]
     private Song? _currentSong;
@@ -78,7 +82,7 @@ public partial class PlaybackService : ObservableObject
 
     public PlaybackService()
     {
-        _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _progressTimer.Tick += (_, _) => UpdateProgress();
         _progressTimer.Start();
 
@@ -94,6 +98,7 @@ public partial class PlaybackService : ObservableObject
     partial void OnEchoEnabledChanged(bool value) => _engine.SetEcho(value);
     partial void OnChorusEnabledChanged(bool value) => _engine.SetChorus(value);
     partial void OnCompressorEnabledChanged(bool value) => _engine.SetCompressor(value);
+    partial void OnIsPlayingChanged(bool value) => AppServices.Smtc.UpdatePlaybackStatus(value);
 
     // ---- EQ ----
 
@@ -122,6 +127,8 @@ public partial class PlaybackService : ObservableObject
         if (_queue.Count == 0)
             return;
 
+        CacheSongs(_queue.ToList());
+
         _currentIndex = Math.Clamp(startIndex, 0, _queue.Count - 1);
         PlayCurrent(_queue[_currentIndex]);
         PreloadNext();
@@ -137,6 +144,7 @@ public partial class PlaybackService : ObservableObject
         }
 
         _queue.Insert(_currentIndex + 1, song);
+        CacheSongs(new[] { song });
         if (_currentIndex + 1 == _queue.Count - 1)
             PreloadNext();
     }
@@ -151,6 +159,7 @@ public partial class PlaybackService : ObservableObject
         }
 
         _queue.Add(song);
+        CacheSongs(new[] { song });
         if (_queue.Count == 2)
             PreloadNext();
     }
@@ -164,6 +173,21 @@ public partial class PlaybackService : ObservableObject
             {
                 _currentIndex = 0;
                 PlayCurrent(_queue[0]);
+                PreloadNext();
+            }
+            return;
+        }
+
+        // 恢复场景：CurrentSong 已设置但尚未创建流 → 从记录位置开始播放
+        if (!_engine.HasStream)
+        {
+            if (PlayCurrent(CurrentSong))
+            {
+                if (_resumePositionSeconds > 0)
+                {
+                    Seek(_resumePositionSeconds);
+                    _resumePositionSeconds = 0;
+                }
                 PreloadNext();
             }
             return;
@@ -293,6 +317,92 @@ public partial class PlaybackService : ObservableObject
         PositionSeconds = 0;
         DurationSeconds = 0;
         IsPlaying = false;
+        _resumePositionSeconds = 0;
+        AppServices.Smtc.UpdatePlaybackStatus(false);
+        ClearLocalState();
+    }
+
+    /// <summary>应用退出时释放音频引擎与定时器（避免 BASS 线程残留导致进程不退）。</summary>
+    public void Shutdown()
+    {
+        _progressTimer.Stop();
+        _spectrumTimer.Stop();
+        _sleepTimer?.Stop();
+        FreePreload();
+        _engine.Stop();
+        _engine.Free();
+    }
+
+    /// <summary>保存当前队列到云端（OpenSubsonic，失败静默）。</summary>
+    public async Task SaveQueueToCloudAsync()
+    {
+        var music = AppServices.Music;
+        if (music is null || _queue.Count == 0)
+            return;
+
+        try
+        {
+            var ids = _queue.Select(s => s.Id).ToList();
+            var current = _currentIndex >= 0 ? _queue[_currentIndex].Id : null;
+            var pos = (long)(PositionSeconds * 1000);
+            await music.SavePlayQueueAsync(ids, current, pos);
+        }
+        catch
+        {
+            // 服务端不支持时忽略
+        }
+    }
+
+    /// <summary>从云端恢复播放队列（不支持/无队列返回 false）。</summary>
+    public async Task<bool> RestoreQueueFromCloudAsync()
+    {
+        var music = AppServices.Music;
+        if (music is null)
+            return false;
+
+        try
+        {
+            var songs = await music.GetPlayQueueAsync();
+            if (songs is null || songs.Count == 0)
+                return false;
+
+            PlayQueue(songs, 0);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>把当前歌曲与位置保存为书签。</summary>
+    public async Task<bool> BookmarkCurrentAsync()
+    {
+        var music = AppServices.Music;
+        if (music is null || CurrentSong is null)
+            return false;
+
+        try
+        {
+            var pos = (long)(PositionSeconds * 1000);
+            return await music.CreateBookmarkAsync(CurrentSong.Id, pos);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>从书签续播（播放其歌曲并从记录位置继续）。</summary>
+    public void PlayBookmark(Bookmark bookmark)
+    {
+        if (bookmark.Songs.Count == 0)
+            return;
+
+        PlayQueue(bookmark.Songs, 0);
+        var seconds = bookmark.Position / 1000.0;
+        if (seconds > 0)
+            Seek(seconds);
     }
 
     /// <summary>睡眠定时器（分钟，0 表示关闭）。</summary>
@@ -326,18 +436,19 @@ public partial class PlaybackService : ObservableObject
         _sleepTimer.Start();
     }
 
-    private void PlayCurrent(Song song)
+    private bool PlayCurrent(Song song)
     {
         var music = AppServices.Music;
         if (music is null)
-            return;
+            return false;
 
         var channel = _engine.CreateStream(music.GetStreamUrl(song.Id));
         if (channel == 0)
-            return;
+            return false;
 
         _engine.PlayChannel(channel);
         ApplyState(song);
+        return true;
     }
 
     /// <summary>切换到下一曲（有预加载则 Gapless/Crossfade，否则直接播放）。</summary>
@@ -356,7 +467,12 @@ public partial class PlaybackService : ObservableObject
         }
         else
         {
-            PlayCurrent(song);
+            // 创建流失败时标记停止，避免 IsStopped 兜底反复触发导致无限换歌
+            if (!PlayCurrent(song))
+            {
+                IsPlaying = false;
+                return;
+            }
             PreloadNext();
             return;
         }
@@ -371,8 +487,30 @@ public partial class PlaybackService : ObservableObject
         DurationSeconds = song.Duration;
         PositionSeconds = 0;
         IsPlaying = true;
+        _submittedSongId = null;
         _ = LoadCoverAsync(song);
         _ = ScrobbleAsync(song.Id, false);
+        RecordLocalHistory(song);
+        _ = SaveQueueToCloudAsync();
+        AppServices.Smtc.UpdateTrack(CleanTitle(song), song.Artist);
+        SaveState();
+    }
+
+    /// <summary>本地历史：后台缓存元数据 + 写入播放记录（不阻塞播放）。</summary>
+    private void RecordLocalHistory(Song song)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                AppServices.Library.UpsertSong(song);
+                AppServices.Library.RecordPlay(song.Id);
+            }
+            catch
+            {
+                // 本地历史失败不影响播放
+            }
+        });
     }
 
     private async Task ScrobbleAsync(string songId, bool submission)
@@ -426,11 +564,129 @@ public partial class PlaybackService : ObservableObject
         if (CurrentSong is null || !_engine.HasStream)
             return;
 
+        // mixer 意外停止（IsPlaying 但已 Stopped）→ 兜底切下一首，避免卡死
+        if (IsPlaying && _engine.IsStopped)
+        {
+            AdvanceTo((_currentIndex + 1) % _queue.Count, false);
+            return;
+        }
+
         var pos = _engine.PositionSeconds;
         var dur = CurrentSong.Duration;
         PositionSeconds = pos;
 
+        // 定期保存播放位置到本地（每 5 秒）
+        if ((DateTime.UtcNow - _lastStateSave).TotalSeconds >= 5)
+        {
+            _lastStateSave = DateTime.UtcNow;
+            SaveState();
+        }
+
+        // 播放过半时回传 scrobble submission（只提交一次）
+        if (dur > 0 && pos >= dur / 2.0 && _submittedSongId != CurrentSong.Id)
+        {
+            _submittedSongId = CurrentSong.Id;
+            _ = ScrobbleAsync(CurrentSong.Id, true);
+        }
+
         if (dur > 0 && pos >= dur - 0.3)
             AdvanceTo((_currentIndex + 1) % _queue.Count, true);
+    }
+
+    /// <summary>后台批量缓存歌曲元数据（供本地恢复队列使用，单任务避免并发写）。</summary>
+    private void CacheSongs(IReadOnlyList<Song> songs)
+    {
+        if (songs.Count == 0)
+            return;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                AppServices.Library.BatchUpsertSongs(songs);
+            }
+            catch
+            {
+                // 缓存失败不影响播放
+            }
+        });
+    }
+
+    /// <summary>保存播放状态（队列 + 当前索引 + 位置）到本地 SQLite。</summary>
+    private void SaveState()
+    {
+        if (_queue.Count == 0)
+            return;
+
+        var ids = _queue.Select(s => s.Id).ToList();
+        var index = _currentIndex;
+        var position = PositionSeconds;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                AppServices.Library.SavePlaybackState(ids, index, position);
+            }
+            catch
+            {
+                // 保存失败不影响播放
+            }
+        });
+    }
+
+    private void ClearLocalState()
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                AppServices.Library.ClearPlaybackState();
+            }
+            catch
+            {
+                // 清空失败忽略
+            }
+        });
+    }
+
+    /// <summary>从本地 SQLite 恢复上次播放状态（队列 + 当前歌曲 + 位置，不自动播放）。</summary>
+    public void RestoreLastSession()
+    {
+        try
+        {
+            var state = AppServices.Library.LoadPlaybackState();
+            if (state is null || state.Value.SongIds.Count == 0)
+                return;
+
+            var songs = new List<Song>();
+            foreach (var id in state.Value.SongIds)
+            {
+                var song = AppServices.Library.GetSong(id);
+                if (song is not null)
+                    songs.Add(song);
+            }
+
+            if (songs.Count == 0)
+                return;
+
+            _queue.Clear();
+            _queue.AddRange(songs);
+            _currentIndex = Math.Clamp(state.Value.CurrentIndex, 0, songs.Count - 1);
+
+            var current = _queue[_currentIndex];
+            CurrentSong = current;
+            DurationSeconds = current.Duration;
+            PositionSeconds = state.Value.PositionSeconds;
+            _resumePositionSeconds = state.Value.PositionSeconds;
+            IsPlaying = false;
+
+            _ = LoadCoverAsync(current);
+            AppServices.Smtc.UpdateTrack(CleanTitle(current), current.Artist);
+        }
+        catch
+        {
+            // 恢复失败忽略
+        }
     }
 }

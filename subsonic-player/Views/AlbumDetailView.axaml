@@ -42,6 +42,16 @@
                                         <MenuItem Header="添加到队尾" Command="{Binding AddToQueueCommand}"/>
                                         <Separator/>
                                         <MenuItem Header="收藏 / 取消收藏" Command="{Binding ToggleFavoriteCommand}"/>
+                                        <Separator/>
+                                        <MenuItem Header="下载" Command="{Binding DownloadCommand}"/>
+                                        <MenuItem Header="分享" Command="{Binding ShareCommand}"/>
+                                        <MenuItem Header="评分">
+                                            <MenuItem Header="5 星" Command="{Binding RateCommand}" CommandParameter="5"/>
+                                            <MenuItem Header="4 星" Command="{Binding RateCommand}" CommandParameter="4"/>
+                                            <MenuItem Header="3 星" Command="{Binding RateCommand}" CommandParameter="3"/>
+                                            <MenuItem Header="2 星" Command="{Binding RateCommand}" CommandParameter="2"/>
+                                            <MenuItem Header="1 星" Command="{Binding RateCommand}" CommandParameter="1"/>
+                                        </MenuItem>
                                     </ContextMenu>
                                 </Button.ContextMenu>
                                 <Grid ColumnDefinitions="40,36,200,48,32" Margin="0,4,24,4">

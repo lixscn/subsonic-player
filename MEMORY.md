@@ -19,7 +19,9 @@
 ## 多服务支持目标
 
 - 目标协议：Subsonic（原生）、Navidrome、Jellyfin、Emby、Plex、AudioStation（群晖）等 NAS 音乐服务
-- 现状：Subsonic 协议族（Subsonic / Navidrome / Jellyfin 兼容模式 / Gonic）已覆盖；Emby / Plex / AudioStation 需各自实现协议客户端
+- 现状：Subsonic 协议族（Subsonic / Navidrome / Jellyfin 兼容模式 / Gonic）+ Emby + Plex 均已实现；AudioStation 规划中
+- Emby/Plex 走 `MusicServiceBase` 派生客户端（`EmbyMusicService` JSON / `PlexMusicService` XML）
+- 认证：Emby 用用户名密码 AuthenticateByName 或 API Key；Plex 用 `X-Plex-Token`（存 ApiKey 字段）
 - 扩展点：`MusicServiceFactory.Create` 按 `MusicServiceConfig.Type` 分支创建不同 `IMusicService` 实现
 
 ## 服务器实现（重要，已验证）

@@ -1,5 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,14 +17,20 @@ public partial class SongItemViewModel : ViewModelBase
 {
     public Song Song { get; }
 
-    public int Index { get; set; }
+    [ObservableProperty]
+    private int _index;
 
     public string IndexText => Index > 0 ? Index.ToString() : "";
+
+    partial void OnIndexChanged(int value) => OnPropertyChanged(nameof(IndexText));
 
     public string Title => CleanTitle();
 
     public string Artist => Song.Artist;
     public string DurationText => FormatDuration(Song.Duration);
+
+    /// <summary>从歌单移除的回调（由 PlaylistDetailViewModel 注入，非歌单场景为 null）。</summary>
+    public Action<SongItemViewModel>? RemoveFromPlaylist { get; set; }
 
     /// <summary>清理 Gonic 不规范的 title（去重「- 艺术家」前后缀，artist 单独显示）。</summary>
     private string CleanTitle()
@@ -64,6 +75,13 @@ public partial class SongItemViewModel : ViewModelBase
     private void AddToQueue() => AppServices.Playback.AddToQueue(Song);
 
     [RelayCommand]
+    private Task RemoveFromPlaylistAsync()
+    {
+        RemoveFromPlaylist?.Invoke(this);
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand]
     private async Task ToggleFavoriteAsync()
     {
         var music = AppServices.Music;
@@ -81,6 +99,74 @@ public partial class SongItemViewModel : ViewModelBase
             IsFavorite = !IsFavorite;
             AppServices.Favorites.Set(Song.Id, IsFavorite);
         }
+    }
+
+    [RelayCommand]
+    private async Task DownloadAsync()
+    {
+        var path = await DownloadService.DownloadAsync(Song);
+        DownloadStatus = path is null ? "下载失败" : "已下载";
+    }
+
+    /// <summary>最近一次下载/评分的结果提示。</summary>
+    [ObservableProperty]
+    private string _downloadStatus = "";
+
+    [RelayCommand]
+    private async Task RateAsync(string? ratingText)
+    {
+        if (!int.TryParse(ratingText, out var rating))
+            return;
+
+        var music = AppServices.Music;
+        if (music is null)
+            return;
+
+        try
+        {
+            await music.SetRatingAsync(Song.Id, rating);
+            DownloadStatus = $"已评分 {rating} 星";
+        }
+        catch
+        {
+            DownloadStatus = "评分失败";
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShareAsync()
+    {
+        var music = AppServices.Music;
+        if (music is null)
+            return;
+
+        try
+        {
+            var shares = await music.CreateShareAsync(Song.Id);
+            var url = shares.FirstOrDefault()?.Url;
+            if (url is null)
+            {
+                DownloadStatus = "分享失败";
+                return;
+            }
+
+            var top = GetTopLevel();
+            if (top?.Clipboard is not null)
+                await top.Clipboard.SetTextAsync(url);
+
+            DownloadStatus = "分享链接已复制";
+        }
+        catch
+        {
+            DownloadStatus = "分享失败";
+        }
+    }
+
+    private static TopLevel? GetTopLevel()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            return TopLevel.GetTopLevel(desktop.MainWindow);
+        return null;
     }
 
     private async Task InitFavoriteAsync()

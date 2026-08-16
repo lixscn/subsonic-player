@@ -1,8 +1,18 @@
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SubsonicPlayer.Services;
 
 namespace SubsonicPlayer.ViewModels;
+
+/// <summary>EQ 预设文件（JSON）。</summary>
+public class EqPreset
+{
+    public string Name { get; set; } = "自定义";
+    public float[] Gains { get; set; } = new float[10];
+}
 
 public partial class EqPanelViewModel : ViewModelBase
 {
@@ -59,5 +69,57 @@ public partial class EqPanelViewModel : ViewModelBase
         Eq8 = gains[7];
         Eq9 = gains[8];
         Eq10 = gains[9];
+    }
+
+    /// <summary>当前 10 段增益（导入/导出用）。</summary>
+    public float[] GetGains() => new[]
+    {
+        (float)Eq1, (float)Eq2, (float)Eq3, (float)Eq4, (float)Eq5,
+        (float)Eq6, (float)Eq7, (float)Eq8, (float)Eq9, (float)Eq10,
+    };
+
+    public void SetGains(float[] gains)
+    {
+        if (gains is not { Length: >= 10 })
+            return;
+
+        Eq1 = gains[0];
+        Eq2 = gains[1];
+        Eq3 = gains[2];
+        Eq4 = gains[3];
+        Eq5 = gains[4];
+        Eq6 = gains[5];
+        Eq7 = gains[6];
+        Eq8 = gains[7];
+        Eq9 = gains[8];
+        Eq10 = gains[9];
+    }
+
+    /// <summary>导出预设到 JSON 文件。</summary>
+    public async Task ExportAsync(string path)
+    {
+        var preset = new EqPreset { Name = SelectedPreset, Gains = GetGains() };
+        var json = JsonSerializer.Serialize(preset, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(path, json);
+    }
+
+    /// <summary>从 JSON 文件导入预设（返回是否成功）。</summary>
+    public async Task<bool> ImportAsync(string path)
+    {
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            var preset = JsonSerializer.Deserialize<EqPreset>(json);
+            if (preset?.Gains is not { Length: >= 10 })
+                return false;
+
+            SetGains(preset.Gains);
+            SelectedPreset = string.IsNullOrWhiteSpace(preset.Name) ? "自定义" : preset.Name;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

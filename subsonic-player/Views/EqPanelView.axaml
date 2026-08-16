@@ -17,6 +17,8 @@
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <TextBlock Text="均衡器" FontSize="18" FontWeight="SemiBold"/>
                 <ComboBox ItemsSource="{Binding PresetNames}" SelectedItem="{Binding SelectedPreset}" Width="120"/>
+                <Button Content="导出" Click="OnExportClick"/>
+                <Button Content="导入" Click="OnImportClick"/>
             </StackPanel>
 
             <!-- 频谱 -->

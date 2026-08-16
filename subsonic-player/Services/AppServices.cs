@@ -13,6 +13,7 @@ public static class AppServices
     public static PlaybackService Playback { get; private set; } = null!;
     public static FavoritesService Favorites { get; } = new();
     public static LibraryDatabase Library { get; private set; } = null!;
+    public static SmtcService Smtc { get; } = new();
     public static string DataDirectory { get; private set; } = "";
 
     /// <summary>服务列表发生增删改时触发。</summary>
@@ -58,6 +59,9 @@ public static class AppServices
             Music = MusicServiceFactory.Create(current);
 
         _ = Favorites.LoadAsync();
+
+        // 恢复上次播放位置（队列 + 当前歌曲 + 进度，不自动播放）
+        Playback.RestoreLastSession();
     }
 
     /// <summary>当前选中的服务配置（按 CurrentServiceId 匹配，失败回退第一个）。</summary>
@@ -101,6 +105,7 @@ public static class AppServices
         existing.WanUrl = config.WanUrl;
         existing.Username = config.Username;
         existing.Password = config.Password;
+        existing.ApiKey = config.ApiKey;
 
         _ = Settings.SaveAsync();
         ServicesChanged?.Invoke();

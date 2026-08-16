@@ -5,13 +5,15 @@ namespace SubsonicPlayer.Services;
 public static class MusicServiceFactory
 {
     /// <summary>
-    /// 根据配置创建音乐服务。Navidrome/Jellyfin 等兼容 Subsonic API；
-    /// 后期接入完全不同协议的服务时在此按 Type 分支。
+    /// 根据配置创建音乐服务。Subsonic/Navidrome/Jellyfin/Gonic 走 Subsonic 兼容协议；
+    /// Emby / Plex 各走其原生协议客户端。
     /// </summary>
     public static IMusicService Create(MusicServiceConfig config)
     {
         return config.Type switch
         {
+            MusicServiceType.Emby => new EmbyMusicService(config),
+            MusicServiceType.Plex => new PlexMusicService(config),
             _ => new SubsonicMusicService(config),
         };
     }

@@ -31,6 +31,17 @@ public partial class SearchViewModel : ViewModelBase
 
     partial void OnStatusChanged(string value) => HasStatus = !string.IsNullOrEmpty(value);
 
+    public SearchViewModel()
+    {
+    }
+
+    /// <summary>带初始关键词构造（顶栏搜索回车跳转时使用），自动执行搜索。</summary>
+    public SearchViewModel(string query)
+    {
+        Query = query;
+        _ = SearchAsync();
+    }
+
     [RelayCommand]
     private async Task SearchAsync()
     {

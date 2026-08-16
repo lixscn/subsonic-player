@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using SubsonicPlayer.Services;
+using SubsonicPlayer.ViewModels;
 
 namespace SubsonicPlayer.Views;
 
@@ -34,6 +35,15 @@ public partial class MainWindow : Window
     {
         if (sender is Slider slider)
             AppServices.Playback.Seek(slider.Value);
+    }
+
+    private void OnSearchKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && DataContext is MainWindowViewModel vm)
+        {
+            vm.SearchCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void OnTitleBarDoubleTapped(object? sender, TappedEventArgs e)

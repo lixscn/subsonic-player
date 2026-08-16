@@ -37,6 +37,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _password = "";
 
+    [ObservableProperty]
+    private string _apiKey = "";
+
     /// <summary>密码框掩码字符（null 表示显示明文）。</summary>
     [ObservableProperty]
     private char? _passwordChar = '*';
@@ -47,6 +50,26 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _saveStatus = "";
 
+    /// <summary>网络质量下拉选项。</summary>
+    public record QualityOption(NetworkQuality Value, string Label);
+
+    [ObservableProperty]
+    private QualityOption _selectedQuality;
+
+    [ObservableProperty]
+    private string _downloadDir = "";
+
+    [ObservableProperty]
+    private bool _smtcEnabled = true;
+
+    public IReadOnlyList<QualityOption> QualityOptions { get; } = new[]
+    {
+        new QualityOption(NetworkQuality.Original, "原始"),
+        new QualityOption(NetworkQuality.High, "高 (320kbps MP3)"),
+        new QualityOption(NetworkQuality.Medium, "中 (192kbps MP3)"),
+        new QualityOption(NetworkQuality.Low, "低 (96kbps MP3)"),
+    };
+
     /// <summary>类型下拉选项（枚举名即产品名）。</summary>
     public IReadOnlyList<MusicServiceType> TypeOptions { get; } = new[]
     {
@@ -54,6 +77,8 @@ public partial class SettingsViewModel : ViewModelBase
         MusicServiceType.Navidrome,
         MusicServiceType.Jellyfin,
         MusicServiceType.Gonic,
+        MusicServiceType.Emby,
+        MusicServiceType.Plex,
     };
 
     public bool CanRemove => Services.Count > 1;
@@ -64,6 +89,9 @@ public partial class SettingsViewModel : ViewModelBase
     public SettingsViewModel()
     {
         CrossfadeSeconds = AppServices.Playback.CrossfadeSeconds;
+        SelectedQuality = QualityOptions.First(q => q.Value == AppServices.Settings.Settings.NetworkQuality);
+        DownloadDir = AppServices.Settings.Settings.DownloadDir;
+        SmtcEnabled = AppServices.Settings.Settings.SmtcEnabled;
         ReloadServices();
 
         var current = AppServices.GetCurrentService();
@@ -92,6 +120,7 @@ public partial class SettingsViewModel : ViewModelBase
         WanUrl = value.WanUrl;
         Username = value.Username;
         Password = value.Password;
+        ApiKey = value.ApiKey;
     }
 
     [RelayCommand]
@@ -152,9 +181,13 @@ public partial class SettingsViewModel : ViewModelBase
         SelectedService.WanUrl = WanUrl.Trim();
         SelectedService.Username = Username.Trim();
         SelectedService.Password = Password;
+        SelectedService.ApiKey = ApiKey.Trim();
 
         AppServices.UpdateService(SelectedService);
         AppServices.Playback.CrossfadeSeconds = CrossfadeSeconds;
+        AppServices.Settings.Settings.NetworkQuality = SelectedQuality.Value;
+        AppServices.Settings.Settings.DownloadDir = DownloadDir.Trim();
+        AppServices.Settings.Settings.SmtcEnabled = SmtcEnabled;
 
         // 若编辑的是当前服务，重建客户端
         if (SelectedService.Id == AppServices.Settings.Settings.CurrentServiceId)

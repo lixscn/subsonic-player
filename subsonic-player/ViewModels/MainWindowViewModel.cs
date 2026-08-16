@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -37,6 +38,10 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private MusicServiceConfig? _selectedService;
 
+    /// <summary>顶栏搜索框文本。</summary>
+    [ObservableProperty]
+    private string _searchText = "";
+
     [RelayCommand]
     private void ToggleTheme()
     {
@@ -67,6 +72,8 @@ public partial class MainWindowViewModel : ViewModelBase
             new("Songs", "歌曲"),
             new("Playlists", "歌单"),
             new("Favorites", "收藏"),
+            new("History", "最近播放"),
+            new("Bookmarks", "书签"),
         };
 
         if (AppServices.Music?.SupportsRadio == true)
@@ -79,7 +86,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _currentPage = new DiscoverViewModel();
 
         // 订阅详情页导航
-        NavigationService.Navigated += vm => CurrentPage = vm;
+        NavigationService.Navigated += vm => SetCurrentPage(vm);
 
         // 订阅服务列表/切换事件，刷新顶栏下拉
         AppServices.ServicesChanged += ReloadServiceOptions;
@@ -87,10 +94,28 @@ public partial class MainWindowViewModel : ViewModelBase
         ReloadServiceOptions();
     }
 
+    /// <summary>替换当前页，并在替换前释放旧页面（如 NowPlayingViewModel 的事件订阅）。</summary>
+    private void SetCurrentPage(ViewModelBase? vm)
+    {
+        if (CurrentPage is IDisposable old && !ReferenceEquals(old, vm))
+            old.Dispose();
+        CurrentPage = vm;
+    }
+
     [RelayCommand]
     private void OpenSettings()
     {
-        CurrentPage = new SettingsViewModel();
+        SetCurrentPage(new SettingsViewModel());
+    }
+
+    /// <summary>顶栏搜索：回车跳转到搜索页并自动搜索。</summary>
+    [RelayCommand]
+    private void Search()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+            return;
+
+        SetCurrentPage(new SearchViewModel(SearchText.Trim()));
     }
 
     partial void OnSelectedNavChanged(NavItem? value)
@@ -98,7 +123,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (value is null)
             return;
 
-        CurrentPage = CreatePage(value.Key);
+        SetCurrentPage(CreatePage(value.Key));
     }
 
     /// <summary>切换顶栏下拉选中服务时触发。</summary>
@@ -136,7 +161,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var key = SelectedNav?.Key;
         if (key is not null)
-            CurrentPage = CreatePage(key);
+            SetCurrentPage(CreatePage(key));
     }
 
     private static ViewModelBase CreatePage(string key) => key switch
@@ -147,6 +172,8 @@ public partial class MainWindowViewModel : ViewModelBase
         "Songs" => new SongsViewModel(),
         "Playlists" => new PlaylistsViewModel(),
         "Favorites" => new FavoritesViewModel(),
+        "History" => new HistoryViewModel(),
+        "Bookmarks" => new BookmarksViewModel(),
         "Radio" => new RadioViewModel(),
         "Search" => new SearchViewModel(),
         _ => new DiscoverViewModel(),

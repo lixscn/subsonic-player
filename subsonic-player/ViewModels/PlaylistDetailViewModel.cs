@@ -46,8 +46,35 @@ public partial class PlaylistDetailViewModel : ViewModelBase
         foreach (var song in detail.Songs)
         {
             var item = new SongItemViewModel(song) { Index = index++ };
+            item.RemoveFromPlaylist = RemoveSong;
             Songs.Add(item);
             item.LoadCover(music);
+        }
+    }
+
+    private async void RemoveSong(SongItemViewModel item)
+    {
+        var music = AppServices.Music;
+        if (music is null)
+            return;
+
+        var idx = Songs.IndexOf(item);
+        if (idx < 0)
+            return;
+
+        try
+        {
+            if (await music.RemoveFromPlaylistAsync(Playlist.Id, new[] { idx }))
+            {
+                Songs.Remove(item);
+                SongCountText = $"{Songs.Count} 首";
+                for (var i = 0; i < Songs.Count; i++)
+                    Songs[i].Index = i + 1;
+            }
+        }
+        catch
+        {
+            // 移除失败保持原样
         }
     }
 
