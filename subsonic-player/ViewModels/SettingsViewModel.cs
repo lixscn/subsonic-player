@@ -37,6 +37,10 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _password = "";
 
+    /// <summary>密码框掩码字符（null 表示显示明文）。</summary>
+    [ObservableProperty]
+    private char? _passwordChar = '*';
+
     [ObservableProperty]
     private double _crossfadeSeconds = 3.0;
 
@@ -53,6 +57,9 @@ public partial class SettingsViewModel : ViewModelBase
     };
 
     public bool CanRemove => Services.Count > 1;
+
+    /// <summary>密码显示切换按钮文字。</summary>
+    public string PasswordVisibilityText => PasswordChar is null ? "隐藏" : "显示";
 
     public SettingsViewModel()
     {
@@ -124,6 +131,13 @@ public partial class SettingsViewModel : ViewModelBase
         AppServices.SwitchTo(SelectedService.Id);
         ReloadServices();
         SaveStatus = $"已切换到「{SelectedService.Name}」";
+    }
+
+    [RelayCommand]
+    private void TogglePasswordVisibility()
+    {
+        PasswordChar = PasswordChar is null ? '*' : null;
+        OnPropertyChanged(nameof(PasswordVisibilityText));
     }
 
     [RelayCommand]
