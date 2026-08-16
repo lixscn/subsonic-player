@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+using SubsonicPlayer.Services;
 
 namespace SubsonicPlayer.Models;
 
@@ -22,6 +24,9 @@ public class MusicServiceConfig
     public string LanUrl { get; set; } = "";
     public string WanUrl { get; set; } = "";
     public string Username { get; set; } = "";
+
+    /// <summary>密码：内存中为明文，序列化到 settings.json 时经 DPAPI 加密（见 EncryptedPasswordConverter）。</summary>
+    [JsonConverter(typeof(EncryptedPasswordConverter))]
     public string Password { get; set; } = "";
 
     /// <summary>类型的中文/友好显示名（供列表展示）。</summary>
