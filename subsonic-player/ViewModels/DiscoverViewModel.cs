@@ -13,6 +13,12 @@ public partial class DiscoverViewModel : ViewModelBase
     private ObservableCollection<SongItemViewModel> _randomSongs = new();
 
     [ObservableProperty]
+    private ObservableCollection<SongItemViewModel> _recommendations = new();
+
+    [ObservableProperty]
+    private bool _hasRecommendations;
+
+    [ObservableProperty]
     private ObservableCollection<AlbumItemViewModel> _newestAlbums = new();
 
     [ObservableProperty]
@@ -73,6 +79,40 @@ public partial class DiscoverViewModel : ViewModelBase
             AppServices.Playback.PlayQueue(RandomSongs.Select(s => s.Song), 0);
     }
 
+    [RelayCommand]
+    private void PlayRecommendations()
+    {
+        if (Recommendations.Count > 0)
+            AppServices.Playback.PlayQueue(Recommendations.Select(s => s.Song), 0);
+    }
+
+    [RelayCommand]
+    private async Task RefreshRecommendationsAsync()
+    {
+        var music = AppServices.Music;
+        if (music is null)
+            return;
+
+        try
+        {
+            var songs = await RecommendationService.GetRecommendationsAsync(music, 10);
+
+            Recommendations.Clear();
+            var index = 1;
+            foreach (var song in songs)
+            {
+                var item = new SongItemViewModel(song) { Index = index++ };
+                Recommendations.Add(item);
+                item.LoadCover(music);
+            }
+            HasRecommendations = Recommendations.Count > 0;
+        }
+        catch
+        {
+            // 换一批失败保持原样
+        }
+    }
+
     private async Task LoadAsync()
     {
         var music = AppServices.Music;
@@ -97,7 +137,8 @@ public partial class DiscoverViewModel : ViewModelBase
                 LoadAlbumsAsync(music, "newest", NewestAlbums),
                 LoadAlbumsAsync(music, "frequent", FrequentAlbums),
                 LoadAlbumsAsync(music, "highest", HighestAlbums),
-                LoadRandomSongsAsync(music));
+                LoadRandomSongsAsync(music),
+                LoadRecommendationsAsync(music));
         }
         finally
         {
@@ -125,5 +166,17 @@ public partial class DiscoverViewModel : ViewModelBase
             RandomSongs.Add(item);
             item.LoadCover(music);
         }
+    }
+
+    private async Task LoadRecommendationsAsync(IMusicService music)
+    {
+        var songs = await RecommendationService.GetRecommendationsAsync(music, 10);
+        foreach (var song in songs)
+        {
+            var item = new SongItemViewModel(song) { Index = Recommendations.Count + 1 };
+            Recommendations.Add(item);
+            item.LoadCover(music);
+        }
+        HasRecommendations = Recommendations.Count > 0;
     }
 }

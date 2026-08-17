@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -41,6 +43,36 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>顶栏搜索框文本。</summary>
     [ObservableProperty]
     private string _searchText = "";
+
+    /// <summary>当前播放歌曲是否已收藏（底部播放栏红心状态）。</summary>
+    [ObservableProperty]
+    private bool _isCurrentFavorite;
+
+    [RelayCommand]
+    private async Task ToggleCurrentFavoriteAsync()
+    {
+        var song = Playback.CurrentSong;
+        var music = AppServices.Music;
+        if (song is null || music is null)
+            return;
+
+        var favorite = !AppServices.Favorites.IsFavorite(song.Id);
+        AppServices.Favorites.Set(song.Id, favorite);
+        IsCurrentFavorite = favorite;
+
+        try
+        {
+            await music.SetFavoriteAsync(song.Id, favorite);
+        }
+        catch
+        {
+            AppServices.Favorites.Set(song.Id, !favorite);
+            IsCurrentFavorite = !favorite;
+        }
+    }
+
+    private void RefreshFavoriteState()
+        => IsCurrentFavorite = Playback.CurrentSong is { } s && AppServices.Favorites.IsFavorite(s.Id);
 
     [RelayCommand]
     private void ToggleTheme()
@@ -92,6 +124,17 @@ public partial class MainWindowViewModel : ViewModelBase
         AppServices.ServicesChanged += ReloadServiceOptions;
         AppServices.CurrentServiceChanged += OnCurrentServiceChanged;
         ReloadServiceOptions();
+
+        // 订阅播放事件：切歌/收藏变化时刷新底部红心状态
+        Playback.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PlaybackService.CurrentSong))
+                RefreshFavoriteState();
+        };
+        AppServices.Favorites.Changed += RefreshFavoriteState;
+
+        // 预加载歌单列表（供歌曲「添加到歌单」子菜单）
+        _ = SongItemViewModel.EnsurePlaylistsLoadedAsync();
     }
 
     /// <summary>替换当前页，并在替换前释放旧页面（如 NowPlayingViewModel 的事件订阅）。</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -159,6 +160,59 @@ public partial class SongItemViewModel : ViewModelBase
         catch
         {
             DownloadStatus = "分享失败";
+        }
+    }
+
+    // ---- 添加到歌单 ----
+
+    /// <summary>「添加到歌单」子菜单的歌单列表（所有歌曲项共享）。</summary>
+    public ObservableCollection<Playlist> Playlists => SharedPlaylists;
+
+    public static ObservableCollection<Playlist> SharedPlaylists { get; } = new();
+    private static bool _playlistsLoaded;
+
+    /// <summary>懒加载歌单列表（供「添加到歌单」子菜单）。</summary>
+    public static async Task EnsurePlaylistsLoadedAsync()
+    {
+        if (_playlistsLoaded)
+            return;
+        _playlistsLoaded = true;
+
+        var music = AppServices.Music;
+        if (music is null)
+            return;
+
+        try
+        {
+            var list = await music.GetPlaylistsAsync();
+            SharedPlaylists.Clear();
+            foreach (var p in list.Where(p => !p.Name.Contains("喜欢的音乐")))
+                SharedPlaylists.Add(p);
+        }
+        catch
+        {
+            // 加载失败保持空列表
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddToPlaylistAsync(string? playlistId)
+    {
+        if (string.IsNullOrEmpty(playlistId))
+            return;
+
+        var music = AppServices.Music;
+        if (music is null)
+            return;
+
+        try
+        {
+            await music.AddSongsToPlaylistAsync(playlistId, new[] { Song.Id });
+            DownloadStatus = "已添加到歌单";
+        }
+        catch
+        {
+            DownloadStatus = "添加失败";
         }
     }
 

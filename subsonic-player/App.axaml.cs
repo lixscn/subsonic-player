@@ -11,6 +11,7 @@ using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using CommunityToolkit.Mvvm.Input;
 using SubsonicPlayer.Services;
 using SubsonicPlayer.ViewModels;
 using SubsonicPlayer.Views;
@@ -185,6 +186,13 @@ public partial class App : Application
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://SubsonicPlayer/Assets/avalonia-logo.ico"))),
             ToolTipText = "Subsonic 音乐播放器",
+            // 单击/双击托盘图标 → 显示主窗口
+            Command = new RelayCommand(() =>
+            {
+                window.Show();
+                window.WindowState = WindowState.Normal;
+                window.Activate();
+            }),
             Menu = new NativeMenu
             {
                 Items =

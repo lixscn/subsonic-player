@@ -18,6 +18,9 @@ public class FavoritesService
     private readonly HashSet<string> _songIds = new(StringComparer.Ordinal);
     private Task? _loadTask;
 
+    /// <summary>收藏集合变化时触发（用于刷新 UI 红心状态）。</summary>
+    public event Action? Changed;
+
     public bool IsFavorite(string songId) => _songIds.Contains(songId);
 
     public void Set(string songId, bool favorite)
@@ -26,6 +29,7 @@ public class FavoritesService
             _songIds.Add(songId);
         else
             _songIds.Remove(songId);
+        Changed?.Invoke();
     }
 
     /// <summary>清空缓存并允许重新加载（切换服务器后调用）。</summary>
@@ -33,6 +37,7 @@ public class FavoritesService
     {
         _loadTask = null;
         _songIds.Clear();
+        Changed?.Invoke();
     }
 
     public Task LoadAsync() => _loadTask ??= LoadInternalAsync();
