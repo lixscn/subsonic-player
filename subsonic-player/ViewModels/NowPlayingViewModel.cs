@@ -64,38 +64,47 @@ public partial class NowPlayingViewModel : ViewModelBase, IDisposable
         if (music is null)
             return;
 
+        Lyrics? lyrics = null;
         try
         {
-            var lyrics = await music.GetLyricsAsync(song.Artist, song.Title, song.Id);
-
-            // 服务端无歌词 → 网络兜底搜索
-            if (lyrics is null)
-            {
-                LyricsStatus = "正在搜索歌词...";
-                lyrics = await LyricsSearchService.SearchAsync(song.Artist, song.Title, song.Duration);
-            }
-
-            // 已切歌则丢弃结果，避免旧歌词覆盖新歌
-            if (Playback.CurrentSong?.Id != song.Id)
-                return;
-
-            Lyrics = lyrics;
-            if (lyrics is null)
-            {
-                LyricsStatus = "未找到歌词";
-            }
-            else if (lyrics.IsSynced)
-            {
-                UpdateCurrentLine(Playback.PositionSeconds);
-            }
-            else
-            {
-                LyricsText = lyrics.Text;
-            }
+            lyrics = await music.GetLyricsAsync(song.Artist, song.Title, song.Id);
         }
         catch
         {
+            // 服务端歌词接口失败（如 Gonic 不支持 getLyrics 端点），视为无歌词，走网络兜底
+            lyrics = null;
+        }
+
+        // 服务端无歌词 → 网络兜底搜索
+        if (lyrics is null)
+        {
+            LyricsStatus = "正在搜索歌词...";
+            try
+            {
+                lyrics = await LyricsSearchService.SearchAsync(song.Artist, song.Title, song.Duration);
+            }
+            catch
+            {
+                lyrics = null;
+            }
+        }
+
+        // 已切歌则丢弃结果，避免旧歌词覆盖新歌
+        if (Playback.CurrentSong?.Id != song.Id)
+            return;
+
+        Lyrics = lyrics;
+        if (lyrics is null)
+        {
             LyricsStatus = "未找到歌词";
+        }
+        else if (lyrics.IsSynced)
+        {
+            UpdateCurrentLine(Playback.PositionSeconds);
+        }
+        else
+        {
+            LyricsText = lyrics.Text;
         }
     }
 

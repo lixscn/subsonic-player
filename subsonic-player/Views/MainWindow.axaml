@@ -190,7 +190,10 @@
                              Margin="8">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:NavItem">
-                                <TextBlock Text="{Binding Label}" Padding="10,8"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="10,8">
+                                    <Path Data="{Binding Icon}" Fill="{DynamicResource TextSecondaryBrush}" Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
