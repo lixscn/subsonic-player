@@ -21,3 +21,7 @@ verify*.txt
 
 # Native DLLs are committed as source? (see note)
 # native/ is tracked; bin/ copies are generated.
+
+# Release packages
+*.zip
+release/
