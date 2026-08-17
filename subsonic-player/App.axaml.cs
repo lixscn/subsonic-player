@@ -4,11 +4,13 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
 using System;
+using System.IO;
 using System.Linq;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using SubsonicPlayer.Services;
 using SubsonicPlayer.ViewModels;
 using SubsonicPlayer.Views;
@@ -60,6 +62,14 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // 全局异常处理：记录到日志文件，便于定位崩溃
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => LogException(e.ExceptionObject as Exception);
+        Dispatcher.UIThread.UnhandledException += (_, e) =>
+        {
+            LogException(e.Exception);
+            e.Handled = true; // 避免 UI 线程异常直接崩溃
+        };
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
@@ -121,6 +131,26 @@ public partial class App : Application
 
         ReleaseResources();
         _desktop?.Shutdown();
+    }
+
+    /// <summary>记录未处理异常到数据目录的 crash.log，便于定位崩溃。</summary>
+    private static void LogException(Exception? ex)
+    {
+        if (ex is null)
+            return;
+
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "subsonic-player");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "crash.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex.GetType().Name}: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch
+        {
+            // 日志失败忽略
+        }
     }
 
     private void SetupTray(MainWindow window)

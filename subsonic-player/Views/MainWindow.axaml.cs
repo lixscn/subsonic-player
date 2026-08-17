@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -43,6 +44,16 @@ public partial class MainWindow : Window
         {
             vm.SearchCommand.Execute(null);
             e.Handled = true;
+        }
+    }
+
+    /// <summary>转到迷你播放器：打开迷你窗口并隐藏主窗口。</summary>
+    private void OnMiniPlayerClick(object? sender, RoutedEventArgs e)
+    {
+        if (Application.Current is App app)
+        {
+            app.ShowMiniPlayer();
+            Hide();
         }
     }
 

@@ -329,6 +329,7 @@ subsonic-player/
 | P2 | Mixer 架构 + Gapless + Crossfade + EQ + 频谱 + DSP |
 | P3 | 播放列表/收藏/歌词/历史 |
 | P4 | 托盘/SMTC/快捷键/主题/定时器 |
+| P5 | 多平台适配（macOS / Linux，Windows 专有功能条件编译隔离） |
 
 ## 功能规划（按里程碑细化）
 
@@ -383,6 +384,18 @@ subsonic-player/
 | 多服务器管理 | 添加/切换服务器 | 一键切换 |
 | 下载 | `download` 下载原文件到下载目录 | 可下载 |
 | 分享 | `getShares`/`createShare`/`updateShare`/`deleteShare` 分享链接 | 分享可用 |
+
+### P5 — 多平台适配
+
+> 当前 TFM 为 `net10.0-windows10.0.19041.0`（为 SMTC 引入 WinRT），且音频引擎为 Windows 版 BASS DLL、密码加密用 DPAPI（crypt32.dll）、托盘/全局快捷键依赖 Windows shell —— 均需平台化处理。
+
+| 功能 | 说明 | 验收 |
+|------|------|------|
+| TFM 解耦 | 回退到 `net10.0`，SMTC / DPAPI / 全局快捷键等 Windows 专有用 `#if WINDOWS` 条件编译隔离 | 非 Windows 平台可编译 |
+| 音频引擎跨平台 | BASS / BASS_FX 换 macOS、Linux 动态库，或 ManagedBass 动态加载（按 RID 选库） | 各平台可播放 |
+| 密码加密跨平台 | DPAPI（crypt32.dll）→ 跨平台方案（平台分支：macOS Keychain / Linux libsecret，或通用 AES） | 各平台密码可持久化 |
+| 托盘 / 快捷键 / SMTC 分支 | 托盘、全局快捷键、SMTC 按平台实现或优雅降级（无 WinRT 平台禁用 SMTC） | 各平台无崩溃 |
+| 发布产物 | `dotnet publish -r win-x64 / osx-arm64 / linux-x64` 各平台打包 | 各平台可运行 |
 
 ## 兼容客户端参考（可选对照）
 

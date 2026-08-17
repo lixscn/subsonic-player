@@ -157,9 +157,10 @@ public partial class SettingsViewModel : ViewModelBase
         if (SelectedService is null)
             return;
 
+        var name = SelectedService.Name;
         AppServices.SwitchTo(SelectedService.Id);
         ReloadServices();
-        SaveStatus = $"已切换到「{SelectedService.Name}」";
+        SaveStatus = $"已切换到「{name}」";
     }
 
     [RelayCommand]
@@ -174,6 +175,9 @@ public partial class SettingsViewModel : ViewModelBase
     {
         if (SelectedService is null)
             return;
+
+        // 先保存 id，避免 ReloadServices 触发 SelectedItem 清空把 SelectedService 置 null 后空引用
+        var serviceId = SelectedService.Id;
 
         SelectedService.Name = Name.Trim();
         SelectedService.Type = Type;
@@ -190,11 +194,11 @@ public partial class SettingsViewModel : ViewModelBase
         AppServices.Settings.Settings.SmtcEnabled = SmtcEnabled;
 
         // 若编辑的是当前服务，重建客户端
-        if (SelectedService.Id == AppServices.Settings.Settings.CurrentServiceId)
+        if (serviceId == AppServices.Settings.Settings.CurrentServiceId)
             AppServices.Reconnect();
 
         ReloadServices();
-        SelectedService = Services.FirstOrDefault(s => s.Id == SelectedService.Id);
+        SelectedService = Services.FirstOrDefault(s => s.Id == serviceId);
         SaveStatus = "已保存";
     }
 }
