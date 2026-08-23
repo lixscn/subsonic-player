@@ -6,9 +6,9 @@ name: Build
 #   #if WINDOWS 漏网、Linux/macOS 专属 API、BASS .so/.dylib、CEF 非 Windows 原生库等问题。
 #
 # 关键点：
-#   - Restore 必须限制在当前 TFM（-p:TargetFramework=...）：否则 Linux/macOS 上会去还原
-#     Cef 的 net10.0-windows10.0.19041.0 专属 TFM 而失败。
-#   - Publish --self-contained -r <rid> 需要还原 RID 运行时包，因此不能加 --no-restore。
+#   - 不单独跑 `dotnet restore`、也不用 `--no-restore`：让 `dotnet build/publish -f <tfm>`
+#     按目标 TFM 隐式还原。避免在 Linux/macOS 上还原 Cef 的 net10.0-windows 专属 TFM（会失败），
+#     也避免 publish --self-contained -r <rid> 缺本地 RID 运行时包。
 #
 # 说明：
 #   - Android（SubsonicPlayer.Mobile）目前是 P6 占位工程，尚未接入；待移动端立项再加独立 job。
@@ -42,13 +42,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore (current TFM only)
+      - name: Build (compile gate, implicit TFM restore)
         working-directory: dotnet
-        run: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=${{ matrix.tfm }}
-
-      - name: Build (compile gate)
-        working-directory: dotnet
-        run: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f ${{ matrix.tfm }} --no-restore -nologo
+        run: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f ${{ matrix.tfm }} -nologo
 
       - name: Publish self-contained
         working-directory: dotnet
