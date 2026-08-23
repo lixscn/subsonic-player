@@ -131,7 +131,7 @@
 - **动态封面底图**：`index.html` 加 `.bg-layer`（封面 blur46 + 深色遮罩），主内容区 `--bg-main-glass` 半透明透出；播放时 `bgImg.src` 同步当前封面。深浅主题各一套玻璃色。
 - **SMTC 缩略图**：`SmtcService.UpdateCover` 改用 `InMemoryRandomAccessStream`（原 `using MemoryStream` 转流会在异步读缩略图前被释放，导致缩略图不显示）。
 - **CI workflow**：`.github/workflows/build.yml`，矩阵 win/ubuntu/macos 真机构建 + 发布 + 上传 artifact；Android 因 Mobile 占位暂不接入。
-- **AudioStation（群晖）**：`MusicServiceType.AudioStation` + `AudioStationMusicService`（`MusicServiceBase` 子类）。已实现 SYNO.API.Discover + SYNO.API.Auth 登录拿 sid、封面/播放/下载 URL 构造；**浏览类（artists/albums/search）暂返回空**——字段映射需真实 DSM 验证，待有群晖设备再补全。
+- **AudioStation（群晖）**：`MusicServiceType.AudioStation` + `AudioStationMusicService`（`MusicServiceBase` 子类）。已实现 SYNO.API.Discover + SYNO.API.Auth 登录拿 sid、封面/播放/下载 URL 构造，以及 **Synology.AudioStation.Song.list 分页聚合的曲库浏览/艺术家/专辑/搜索**（按已知 API 字段形状映射，解析失败降级为空）。**字段路径需在真实 DSM 上确认**（无设备前未实测）。
 
 ## 来源项目
 
