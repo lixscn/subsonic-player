@@ -2,8 +2,6 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
-using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using SubsonicPlayer.Services;
 
 #if WINDOWS
@@ -135,10 +133,10 @@ public sealed class SmtcService : IMediaIntegration
         }
     }
 
-    /// <summary>更新封面缩略图（任务栏媒体控件显示的封面）。</summary>
-    public void UpdateCover(IImage? image)
+    /// <summary>更新封面缩略图（任务栏媒体控件显示的封面，原始字节）。</summary>
+    public void UpdateCover(byte[]? imageBytes)
     {
-        if (_controls is null || image is not Bitmap bmp)
+        if (_controls is null || imageBytes is null || imageBytes.Length == 0)
             return;
 
         try
@@ -146,14 +144,10 @@ public sealed class SmtcService : IMediaIntegration
             // 用 InMemoryRandomAccessStream 承载数据：SMTC 是异步读缩略图，
             // 若用 using 的 MemoryStream 转流，方法结束即被释放，缩略图可能读不到。
             var stream = new InMemoryRandomAccessStream();
-            using (var ms = new MemoryStream())
+            using (var outStream = stream.AsStreamForWrite())
             {
-                bmp.Save(ms);
-                ms.Position = 0;
-                using (var outStream = stream.AsStreamForWrite())
-                {
-                    ms.CopyTo(outStream);
-                }
+                outStream.Write(imageBytes, 0, imageBytes.Length);
+                outStream.Flush();
             }
             stream.Seek(0);
 

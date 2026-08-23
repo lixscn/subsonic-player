@@ -133,6 +133,15 @@
 - **CI workflow**：`.github/workflows/build.yml`，矩阵 win/ubuntu/macos 真机构建 + 发布 + 上传 artifact；Android 因 Mobile 占位暂不接入。
 - **AudioStation（群晖）**：`MusicServiceType.AudioStation` + `AudioStationMusicService`（`MusicServiceBase` 子类）。已实现 SYNO.API.Discover + SYNO.API.Auth 登录拿 sid、封面/播放/下载 URL 构造，以及 **Synology.AudioStation.Song.list 分页聚合的曲库浏览/艺术家/专辑/搜索**（按已知 API 字段形状映射，解析失败降级为空）。**字段路径需在真实 DSM 上确认**（无设备前未实测）。
 
+## 近期改动（2026-08 一轮）
+
+- **Avalonia 彻底解耦（Core）**：`SubsonicPlayer.Core` **已不引用 Avalonia**（移除 `PackageReference Avalonia`）。
+  - 封面管线 `IImage→byte[]`：`ImageLoader` 返回字节、`PlaybackService.CurrentCover` 为 `byte[]?`、`IMediaIntegration.UpdateCover(byte[])`、`SmtcService.UpdateCover(byte[])` 直接写缩略图流。
+  - 计时器：`DispatcherTimer→UiTimer`（Core `System.Threading.Timer` + `IActionDispatcher` 抽象）；Cef 注入 `AvaloniaUiDispatcher`（`Dispatcher.UIThread.Post`）。
+  - 删除死代码：20+ XAML 遗留 ViewModel + `ThemeManager` + `MainWindowViewModel` + `MiniPlayerViewModel` + `SpectrumHeightConverter`；Cef 不再用 Core `MainWindowViewModel`（DataContext）。
+  - Core 现只有 `SongItemViewModel` + `ViewModelBase` 两个 VM；`SongItemViewModel.Cover` 为 `byte[]?`。
+  - 跨平台 `/` Windows / Core 均编译通过。
+
 ## 来源项目
 
 播放器服务的音乐库/Subsonic 服务托管在自建 NAS。

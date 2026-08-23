@@ -2,7 +2,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SubsonicPlayer.Models;
@@ -50,7 +49,7 @@ public partial class SongItemViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    private IImage? _cover;
+    private byte[]? _cover;
 
     [ObservableProperty]
     private bool _isFavorite;

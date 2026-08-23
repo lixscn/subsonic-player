@@ -86,6 +86,7 @@ public partial class App : Application
     /// <summary>注入平台实现（SMTC/剪贴板/密码加密）。Windows 用 DPAPI 与 SMTC，其他平台走 Core 兜底。</summary>
     private static void InjectPlatformServices()
     {
+        AppServices.UiDispatcher = new AvaloniaUiDispatcher();
         AppServices.Clipboard = new DesktopClipboard();
         // DPAPI 按运行时系统注入（纯 crypt32 P/Invoke，net10.0 与 net10.0-windows 均可用），
         // 保证同一 settings.json 在两种 TFM 下都能解密已保存密码。

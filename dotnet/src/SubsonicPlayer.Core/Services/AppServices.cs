@@ -23,6 +23,9 @@ public static class AppServices
     /// <summary>密码/密钥加密提供者（Windows 用 DPAPI，其他平台 AES-GCM）。由各端 App 启动时注入。</summary>
     public static ISecretProtector SecretProtector { get; set; } = new AesSecretProtector();
 
+    /// <summary>主线程调度器（由各端 App 注入；未注入时内联执行）。用于 Core 的 UiTimer 等跨平台调度。</summary>
+    public static IActionDispatcher UiDispatcher { get; set; } = new InlineActionDispatcher();
+
     public static string DataDirectory { get; private set; } = "";
 
     /// <summary>服务列表发生增删改时触发。</summary>

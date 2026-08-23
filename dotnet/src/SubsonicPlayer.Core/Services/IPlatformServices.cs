@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using Avalonia.Media;
 
 namespace SubsonicPlayer.Services;
 
@@ -22,8 +21,8 @@ public interface IMediaIntegration
     /// <summary>更新播放状态。</summary>
     void UpdatePlaybackStatus(bool playing);
 
-    /// <summary>更新封面缩略图。</summary>
-    void UpdateCover(IImage? image);
+    /// <summary>更新封面缩略图（原始字节，与 UI 框架解耦）。</summary>
+    void UpdateCover(byte[]? imageBytes);
 
     /// <summary>释放平台资源。</summary>
     void Dispose();
@@ -36,7 +35,7 @@ public sealed class NoopMediaIntegration : IMediaIntegration
     public void Initialize(object? window) { }
     public void UpdateTrack(string title, string artist) { }
     public void UpdatePlaybackStatus(bool playing) { }
-    public void UpdateCover(IImage? image) { }
+    public void UpdateCover(byte[]? imageBytes) { }
     public void Dispose() { }
 }
 

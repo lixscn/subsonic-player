@@ -1,10 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using Avalonia.Media;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SubsonicPlayer.Models;
@@ -37,9 +35,9 @@ public partial class PlaybackService : ObservableObject
     public ObservableCollection<SongItemViewModel> QueueItems { get; } = new();
 
     private int _preloadChannel;
-    private readonly DispatcherTimer _progressTimer;
-    private readonly DispatcherTimer _spectrumTimer;
-    private DispatcherTimer? _sleepTimer;
+    private readonly UiTimer _progressTimer;
+    private readonly UiTimer _spectrumTimer;
+    private UiTimer? _sleepTimer;
     private string? _submittedSongId;
     private double _resumePositionSeconds;
     private DateTime _lastStateSave = DateTime.MinValue;
@@ -48,7 +46,7 @@ public partial class PlaybackService : ObservableObject
     private Song? _currentSong;
 
     [ObservableProperty]
-    private IImage? _currentCover;
+    private byte[]? _currentCover;
 
     [ObservableProperty]
     private bool _isPlaying;
@@ -91,13 +89,11 @@ public partial class PlaybackService : ObservableObject
 
     public PlaybackService()
     {
-        _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        _progressTimer.Tick += (_, _) => UpdateProgress();
-        _progressTimer.Start();
+        _progressTimer = new UiTimer(UpdateProgress);
+        _progressTimer.Start(200);
 
-        _spectrumTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        _spectrumTimer.Tick += (_, _) => Spectrum = _engine.GetSpectrum(64);
-        _spectrumTimer.Start();
+        _spectrumTimer = new UiTimer(() => Spectrum = _engine.GetSpectrum(64));
+        _spectrumTimer.Start(50);
     }
 
     partial void OnVolumeChanged(double value) => _engine.Volume = (float)value;
@@ -504,8 +500,7 @@ public partial class PlaybackService : ObservableObject
             return;
 
         var endTime = DateTime.Now.AddMinutes(minutes);
-        _sleepTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _sleepTimer.Tick += (_, _) =>
+        _sleepTimer = new UiTimer(() =>
         {
             if (DateTime.Now < endTime)
                 return;
@@ -517,8 +512,8 @@ public partial class PlaybackService : ObservableObject
                 _engine.Pause();
                 IsPlaying = false;
             }
-        };
-        _sleepTimer.Start();
+        });
+        _sleepTimer.Start(1000);
     }
 
     private bool PlayCurrent(Song song)
