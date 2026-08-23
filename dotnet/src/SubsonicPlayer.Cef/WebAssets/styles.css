@@ -1175,7 +1175,14 @@ html.light .vinyl-sleeve {
 .status-line { color: var(--text-secondary); font-size: 13px; margin-bottom: 16px; }
 
 /* ============ 搜索页 ============ */
-.search-bar { display: flex; gap: 8px; margin-bottom: 16px; max-width: 560px; }
+#pageSearch .section-title { text-align: center; }
+.search-bar {
+    display: flex;
+    gap: 8px;
+    margin: 0 auto 16px;
+    max-width: 560px;
+    width: 100%;
+}
 .search-page-input {
     flex: 1;
     padding: 9px 14px;

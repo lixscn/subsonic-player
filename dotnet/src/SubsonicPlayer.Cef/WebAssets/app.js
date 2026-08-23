@@ -913,6 +913,9 @@ document.getElementById('openSettingsBtn').addEventListener('click', openSetting
     searchInput.addEventListener('focus', () => Bridge.invoke('focusBrowser'));
     searchInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
+            // 顶栏输入同步到搜索页输入框
+            const pi = document.getElementById('pageSearchInput');
+            if (pi) pi.value = searchInput.value;
             navigate('search');
             runSearch(searchInput.value);
         }
