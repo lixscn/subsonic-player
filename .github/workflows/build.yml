@@ -5,10 +5,14 @@ name: Build
 # 而不是在 Windows 上「交叉发布」——从而能在真机上抓出：
 #   #if WINDOWS 漏网、Linux/macOS 专属 API、BASS .so/.dylib、CEF 非 Windows 原生库等问题。
 #
+# 关键点：
+#   - Restore 必须限制在当前 TFM（-p:TargetFramework=...）：否则 Linux/macOS 上会去还原
+#     Cef 的 net10.0-windows10.0.19041.0 专属 TFM 而失败。
+#   - Publish --self-contained -r <rid> 需要还原 RID 运行时包，因此不能加 --no-restore。
+#
 # 说明：
-#   - Android（SubsonicPlayer.Mobile）目前是 P6 占位工程，尚未接入（无 App 入口/Activity），
-#     待移动端立项后再独立加 job（dotnet publish -f net10.0-android + 模拟器）。
-#   - CI 编译器带账号信息，公共 runner 不会泄露任何凭据；settings.json 未提交仓库。
+#   - Android（SubsonicPlayer.Mobile）目前是 P6 占位工程，尚未接入；待移动端立项再加独立 job。
+#   - settings.json 未提交仓库，公共 runner 无凭据。
 
 on:
   push:
@@ -38,9 +42,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
+      - name: Restore (current TFM only)
         working-directory: dotnet
-        run: dotnet restore
+        run: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=${{ matrix.tfm }}
 
       - name: Build (compile gate)
         working-directory: dotnet
@@ -50,7 +54,7 @@ jobs:
         working-directory: dotnet
         run: |
           dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release \
-            -f ${{ matrix.tfm }} -r ${{ matrix.rid }} --self-contained true --no-restore -nologo
+            -f ${{ matrix.tfm }} -r ${{ matrix.rid }} --self-contained true -nologo
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
