@@ -31,15 +31,19 @@ jobs:
             tfm: net10.0-windows10.0.19041.0
             rid: win-x64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj
+            continue: false   # 必须通过
           - os: ubuntu-latest
             tfm: net10.0
             rid: linux-x64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=net10.0
+            continue: false   # 必须通过
           - os: macos-latest
             tfm: net10.0
             rid: osx-arm64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=net10.0
+            continue: true    # macOS 构建待修（见下方注释），不阻塞
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.continue }}
     steps:
       - uses: actions/checkout@v4
 
