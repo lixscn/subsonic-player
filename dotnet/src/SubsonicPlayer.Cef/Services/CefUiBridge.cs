@@ -130,8 +130,12 @@ public sealed class CefUiBridge : IDisposable
     {
         _browser = browser;
         _window = window;
-        // 非 Windows 无边框拖动需要 PointerEventArgs（macOS/Linux）；OSR 下缓存最近一次按下
-        _browser.PointerPressed += (_, e) => _lastPointer = e;
+        // OSR 键盘输入需要 AvaloniaCefBrowser 持有键盘焦点：每次点击 CEF 区域强制聚焦，物理键盘才能进入 CEF
+        _browser.PointerPressed += (_, e) =>
+        {
+            _lastPointer = e;
+            TryFocusBrowser();
+        };
         SubscribeState();
         PrewarmConnection();
     }
@@ -454,14 +458,22 @@ public sealed class CefUiBridge : IDisposable
         });
     }
 
-    /// <summary>OSR 模式下点击输入框时强制浏览器控件获得键盘焦点，否则键盘事件不进入 CEF。</summary>
+    /// <summary>OSR 模式下强制浏览器控件获得键盘焦点，否则键盘事件不进入 CEF。</summary>
     public void FocusBrowser()
     {
-        Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(() => TryFocusBrowser());
+    }
+
+    /// <summary>强制 AvaloniaCefBrowser 获得 Avalonia 键盘焦点（Focusable + Focus 双保险）。</summary>
+    private void TryFocusBrowser()
+    {
+        if (_browser is null) return;
+        try
         {
-            try { _browser?.Focus(); }
-            catch { /* 忽略 */ }
-        });
+            _browser.Focusable = true;
+            _browser.Focus();
+        }
+        catch { /* 忽略 */ }
     }
 
     /// <summary>最近一次鼠标按下（非 Windows 平台 BeginMoveDrag 需要 PointerPressedEventArgs）。</summary>
