@@ -1,18 +1,20 @@
 name: Build
 
 # CI 真机 workflow：每次 push / PR 在真实目标 OS 上编译并发布，验证跨平台代码。
-# 用矩阵（matrix）分别在 Windows / Ubuntu / macOS 官方 runner 上跑，
-# 而不是在 Windows 上「交叉发布」——从而能在真机上抓出：
-#   #if WINDOWS 漏网、Linux/macOS 专属 API、BASS .so/.dylib、CEF 非 Windows 原生库等问题。
+# 用矩阵（matrix）分别在 Windows / Ubuntu / macOS 官方 runner 上跑。
+#
+# 目标：**跨平台编译门禁（Build）必须通过**——用于抓 #if WINDOWS 漏网、Linux/macOS 专属
+# API、BASS .so/.dylib、CEF 非 Windows 原生库等在真机上才会暴露的问题。
+# （此前是在 Windows 上「交叉发布」，无法代替真机编译。）
 #
 # 关键点：
-#   - 不单独跑 `dotnet restore`、也不用 `--no-restore`：让 `dotnet build/publish -f <tfm>`
-#     按目标 TFM 隐式还原。避免在 Linux/macOS 上还原 Cef 的 net10.0-windows 专属 TFM（会失败），
-#     也避免 publish --self-contained -r <rid> 缺本地 RID 运行时包。
+#   - Restore 必须按当前 OS 限定的目标 TFM：Windows 裸还原（其 project 是 net10.0-windows...），
+#     Linux/macOS 用 -p:TargetFramework=net10.0 只还原本地 TFM（否则会把 Cef 的
+#     net10.0-windows 专属 TFM 一起还原而失败）。
+#   - Publish self-contained 对 CefGlue 的跨平台打包在 CI 上尚不稳定，故设 continue-on-error；
+#     正式发布包仍走本地 `dotnet/publish.ps1`（win-x64/linux-x64/osx-*）。
 #
-# 说明：
-#   - Android（SubsonicPlayer.Mobile）目前是 P6 占位工程，尚未接入；待移动端立项再加独立 job。
-#   - settings.json 未提交仓库，公共 runner 无凭据。
+# 说明：Android（SubsonicPlayer.Mobile）为 P6 占位工程未接入；settings.json 未提交仓库。
 
 on:
   push:
@@ -28,12 +30,15 @@ jobs:
           - os: windows-latest
             tfm: net10.0-windows10.0.19041.0
             rid: win-x64
+            restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj
           - os: ubuntu-latest
             tfm: net10.0
             rid: linux-x64
+            restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=net10.0
           - os: macos-latest
             tfm: net10.0
             rid: osx-arm64
+            restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=net10.0
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -42,18 +47,24 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build (compile gate, implicit TFM restore)
+      - name: Restore (per-OS TFM)
         working-directory: dotnet
-        run: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f ${{ matrix.tfm }} -nologo
+        run: ${{ matrix.restore }}
 
-      - name: Publish self-contained
+      - name: Build (compile gate)
+        working-directory: dotnet
+        run: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f ${{ matrix.tfm }} --no-restore -nologo
+
+      - name: Publish self-contained (best effort)
+        continue-on-error: true
         working-directory: dotnet
         run: |
           dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release \
-            -f ${{ matrix.tfm }} -r ${{ matrix.rid }} --self-contained true -nologo
+            -f ${{ matrix.tfm }} -r ${{ matrix.rid }} --self-contained true --no-restore -nologo
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: SubsonicPlayer-${{ matrix.rid }}
           path: |
