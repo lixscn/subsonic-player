@@ -4,77 +4,120 @@
 
 ## 一句话
 
-面向 NAS 音乐服务的**专业级桌面音乐播放器**。当前自用服务端为「**道理鱼音乐**」（Gonic）。
+面向 NAS 音乐服务的**专业级桌面音乐播放器**（Roon 风格 UI）。当前自用服务端为「**道理鱼音乐**」（Gonic）。
 
 ## 技术栈（已定）
 
-.NET 10 + Avalonia 11.3.20 + Semi.Avalonia 11.3.14 + MVVM（CommunityToolkit.Mvvm）+ SQLite；音频引擎 BASS + BASS_FX；**UI 已迁移为 HTML（Chromium 120 via CefGlue.Avalonia 120.6099.211）**。
+.NET 10 + Avalonia 11.3.20 + Semi.Avalonia 11.3.14 + CommunityToolkit.Mvvm + SQLite；音频引擎 BASS + BASS_FX；**UI 为 HTML（Chromium 120 via CefGlue.Avalonia 120.6099.211，OSR 渲染）**。
+
+## 项目结构（dotnet/）
+
+- `src/SubsonicPlayer.Core`：共享逻辑（BASS 音频引擎、PlaybackService、AppServices、Subsonic/Emby/Plex 客户端、歌词搜索）
+- `src/SubsonicPlayer.Cef`：**主力**。HTML UI（WebAssets）+ CefGlue.Avalonia
+- `src/SubsonicPlayer.Desktop`：Avalonia 原版 XAML UI，**已搁置**（不再维护 CEF 界面）
+- `src/CefShadowTest`：空白 CEF 诊断项目（index.html 被破坏为测试状态，未提交 git）
+- `publish.ps1`：全平台发布脚本
 
 ## UI 技术（CEF 迁移，重要）
 
-- **为什么降级 Avalonia 12→11.3.20**：CefGlue.Avalonia 120（Chromium 120）依赖 Avalonia 11.0.9 编译，在 Avalonia 12 上运行时报 `TypeLoadException: Could not load type 'Avalonia.Input.GotFocusEventArgs'`（二进制不兼容，编译过但运行崩）。降到 11.3.20 后正常。
-- **Avalonia 11 兼容改动**：`TextBox.PlaceholderText`→`Watermark`；`WindowDecorations` 属性（12 新增）需移除。
-- **exclr8cef 已弃用**：NuGet 包只有托管 DLL，native 二进制缺失（runtime.*.Exclr8Cef 包在 nuget.org 全部 404、GitHub 无 release），无法落地。
+- **为什么降级 Avalonia 12→11.3.20**：CefGlue.Avalonia 120 依赖 Avalonia 11.0.9 编译，在 Avalonia 12 上运行崩 `TypeLoadException: Could not load type 'Avalonia.Input.GotFocusEventArgs'`（二进制不兼容）。11.3.20 正常。
+- **Avalonia 11 兼容**：`TextBox.PlaceholderText`→`Watermark`；移除 `WindowDecorations`（12 新增）。
+- **exclr8cef 已弃用**：NuGet 只有托管 DLL，native 缺失（runtime.*.Exclr8Cef 全 404、GitHub 无 release）。
 - **HTML UI 架构**：
-  - WebAssets/ 目录存放 index.html / styles.css / app.js（Roon 风格深色 UI）
-  - 自定义 scheme `app://ui/`（`AppSchemeHandlerFactory` + `FileResourceHandler` 实现 `CefResourceHandler` 新式 Open/Read 异步 API）服务本地文件
-  - C#→JS：`CefUiBridge`（`RegisterJavascriptObject` 暴露为 `window.bridge`），`PropertyChanged`/事件订阅后 `ExecuteJavaScript` 推送 `bridgeEvent` CustomEvent
-  - JS→C#：`window.bridge.invokeData(method, argsJson)` 统一入口（`CefUiBridge.InvokeData` 内部 `Dispatcher.UIThread.Invoke` 调度，避免 CEF 回调线程问题）；`CefPageDataProvider` 提供页面 DTO
-  - 封面用 `IMusicService.GetCoverArtUrl` 返回带认证 URL 给 `<img src>`；播放走 BASS（JS 只发命令，进度由 C# 推送）
-- **CEF 缓存**：`%APPDATA%\subsonic-player\cef-cache`，改 HTML/CSS/JS 后若 UI 异常先清缓存
+  - WebAssets/（index.html / styles.css / app.js，原生 JS 无框架，Roon 风格）
+  - 自定义 scheme `app://ui/`（AppSchemeHandlerFactory + FileResourceHandler，新式 Open/Read 异步 API）
+  - C#→JS：`CefUiBridge` 暴露 `window.bridge`（`RegisterJavascriptObject`，方法返回 Task 自动转 Promise），事件订阅后 `ExecuteJavaScript` 推送 `bridgeEvent` CustomEvent → JS `StateBridge`
+  - JS→C#：`window.bridge.invokeData(method, argsJson)` 统一入口（反射分派到 `CefPageDataProvider`，UI 线程调度）；`Bridge.invoke(method, ...)` 直调 void 方法
+  - 封面用 `GetCoverArtUrl` 带认证 URL 给 `<img src>`；播放走 BASS（JS 只发命令，进度由 C# 每 500ms 节流推送）
+- **CEF 缓存**：`%APPDATA%\subsonic-player\cef-cache`，改 HTML/CSS/JS 后 UI 异常先清缓存
 - **CEF 初始化**：Program.cs `AfterSetup` 里 `CefRuntimeLoader.Initialize(settings, cmdArgs, customSchemes)`，需 `WindowlessRenderingEnabled = true`（OSR）
+- **窗口**：无边框（`ExtendClientAreaToDecorationsHint`），HTML 自绘标题栏 + 拖动/最小化/最大化/关闭按钮
 
 ## 已踩大坑（CefGlue + HTML UI）
 
-1. **右侧"边框阴影"其实是 queue-panel 的 box-shadow**：
-   - `.queue-panel`（播放队列侧面板）`position:fixed; right:0`，关闭时用 `style.right='-340px'` 移出屏幕，但**其 `box-shadow: -12px 0 40px rgba(0,0,0,0.4)` 仍向左投射**到内容区右缘 → 整个右侧出现渐变阴影。
-   - **深色下看不见**（阴影深色融入背景），**浅色下显形**（白色背景上成灰渐变）。
-   - **排查方法**：建独立 CEF 测试项目（`dotnet/src/CefShadowTest`），从纯白页逐步加元素二分定位——空白页无阴影、空容器+完整CSS无阴影、完整 index.html 有阴影，逐个清空 侧栏/顶栏/内容/播放栏 后仍存在，**移除 queue-panel 后阴影消失**。
-   - **修复**：`.queue-panel` 默认 `visibility:hidden`，JS 打开时设 `visibility:visible`、关闭时 `hidden`。关闭状态完全不渲染（含阴影）。
-   - **教训**：`position:fixed/absolute` + `box-shadow` 的元素，即使移出视口阴影仍会投射，需用 `visibility:hidden` 而非仅位移。
+1. **右侧"边框阴影"= queue-panel 的 box-shadow**：`position:fixed; right:0` 关闭时 `right:-340px` 移出屏幕，但 `box-shadow` 仍向左投射 → 右侧渐变阴影（深色不可见、浅色显形）。排查：CefShadowTest 空白页二分定位。**修复：关闭时 `visibility:hidden`（仅位移不够）**。教训：fixed/absolute + box-shadow 移出视口仍投影，须 visibility:hidden。
 
-2. **CefGlue.Avalonia 的 OSR 尺寸问题（未彻底解决）**：
-   - `AvaloniaControl.OnLayoutUpdated` 用 `Bounds.Width/Height`（逻辑像素）传 CEF，**不乘 RenderScaling**，高 DPI（150%）下 OSR 视口比窗口窄，右侧可能有残留——经排查该残留与 queue-panel 阴影叠加，queue-panel 修复后主问题消失。
+2. **OSR 物理键盘无法输入（搜索框/设置表单）**：CEF 内部 input 可聚焦，但 **AvaloniaCefBrowser 未持有 Avalonia 键盘焦点** → KeyDown 不路由到 CEF → 物理键盘进不去（CDP 模拟能输入、SendKeys 物理键不行）。**修复：AttachBrowser 监听 PointerPressed，每次点击强制 `_browser.Focusable=true; _browser.Focus()`**。窗口 GotFocus/KeyDown 日志验证链路。
 
-3. **图标用 SVG symbol sprite（`<svg width=0><defs><symbol>`）替代 unicode/emoji**：unicode 图标（▶/⏮/⏭/🔁 等）在 CEF 字体下渲染闪烁/缺字方块；SVG `<use href="#i-xxx">` 稳定且可切换。
+3. **EQ 无效两处**：
+   - **频点非法**：`EqFrequencies` 原含 31/62Hz，**低于 BASS DX8 ParamEQ 最小中心频率（80Hz）→ `BASS_FXSetParameters err=IllegalParam`**。改 `{100,150,250,500,1K,2K,4K,8K,12K,16K}`（与 JS 滑块标签同步）。
+   - **带宽太窄**：`fBandwidth=1.0`（半音单位，1/12 八度极窄无感）→ 改 **12f（1 个八度）** 后可闻。
+   - EQ 挂在 mixer 上（`_mixer==0` 时跳过——未播放时拖 EQ 无效属正常）。
+
+4. **歌词不显示/卡死**：
+   - Gonic `getLyrics` 返回 404 **抛异常**，被外层 catch 吞掉 → Web 兜底从未执行。修复：server 歌词异常隔离，失败继续 `LyricsSearchService.SearchAsync`。
+   - **LRCLIB 在大陆被墙**（连接挂起 10s 超时）→ 每次点歌词卡 10-20s。修复：lrclib 用 4s 短超时 HttpClient（`HttpFast`）+ 与网易云**并行**（`Task.WhenAny`），中文歌网易云 1-2s 返回。
+   - 网易云 API 可用（`music.163.com/api/search/get` + `/api/song/lyric`，需 Referer），歌词缓存进 SQLite（lyrics_cache）。
+
+5. **服务配置保存后不生效**：`SaveService` 只保存不重建客户端。修复：`AppServices.ReloadCurrent()`（重建 Music + 停播清队列 + 重载收藏 + 触发 `CurrentServiceChanged`）；JS `services` 事件里清数据缓存（pageCache/albumsCache/songsCache）+ `navigate(currentPage)` 重载。
+
+6. **图标用 SVG symbol sprite** 替代 unicode/emoji（▶⏮🔁 等在 CEF 缺字闪烁）。`<svg width=0><defs><symbol id="i-xxx">` + `<use href="#i-xxx">`。
+
+7. **侧面板关闭残留阴影/不可见**：queue-panel 打开需同时 `right:0` + `visibility:visible`（`toggleSleepMenu` 曾漏 visibility 导致睡眠面板点不开）。统一用 `closeSidePanel()`，点击面板外空白也关闭（document mousedown 判断）。
+
+8. **浅色主题下 accent-text 看不清**：`html.light` 需覆盖 accent 系列变量（`--accent-text` 浅色用深青绿 `#0B6B4F`）；`.dtab.active`（青绿底）文字用深墨绿 `#06231B` 而非浅青。
+
+9. **配置页密码明文**：`GetServices` 不返回明文密码（只给 `hasPassword` 布尔），编辑时密码留空=不修改。
+
+## 发现页设计（重要）
+
+- 顶部两个 **tab**：随机推荐 / 智能推荐，共用一个位置
+- **每天只刷新一次**：`localStorage` 存 `discover_cache_{random|smart}` + 日期 key，跨天自动失效；「换一批」清当天缓存强制刷新
+- **从上到下顺序加载**：tab → 最新专辑 → 常听专辑 → 高分专辑；未加载区块全部**骨架占位**（skel-rows/skel-albums/skel-detail，固定点位防跳动）
+- 数据源：`getDiscoverQuick`（随机歌）、`getDiscoverMore`（智能推荐 + newest/frequent/highest 专辑，一次返回全部）
+- 专辑/艺术家/歌曲/收藏/历史/书签/搜索页加载均用骨架占位（`skelGridHtml`/`skelSongListHtml`/`skelDetailHtml`）
+
+## 其他功能要点
+
+- **EQ 面板**：10 段滑块 + 预设；重开面板从 C# `GetEqGains()` 回显滑块与选中预设（匹配 presetGains 判定）
+- **播放进度点**：updatePlayerBar 需同时更新 `fill.width` 和 `thumb.left`（曾只更新 fill 导致圆点不动）
+- **队列封面占位**：无封面/加载失败用 `#i-music` SVG（span 需 `display:flex` 否则 grid 列塌陷错位）
+- **书签行**：点击走 `playBookmark`（曾缺 data-song-id 无反应）
+- **睡眠定时器**：C# DispatcherTimer 到点 Pause；JS `pickSleep` 高亮选中 + 提示"已设置 N 分钟"
+- **多服务下拉**在顶栏（serviceSelect）；设置弹窗管理服务器增删改
+- **服务端是 Gonic**：认证用 `p` 明文密码（不支持 token error 41）；`album.artist`/`year`/`track` 返回 Go 内存地址或 `<nil>` 脏数据；`getArtists` 含非法 XML 控制字符需清理；id 前缀 `alb_`/`trk_`/`art_`
+
+## 跨平台（已就绪）
+
+- **BASS**：`native/{win-x64,osx,linux-x64}` 三平台 9 库（bass + flac/opus/ape/wv/dsd/midi/fx/mix）；`LibraryExtension` 按平台 `.dll/.dylib/.so`；BassNative `Lib="bass"` 跨平台可用
+- **CEF**：NuGet redist 按 RID 注入。注意发布产物结构差异：win `libcef.dll` 根目录、linux `libcef.so` 在 `CefGlueBrowserProcess\`、osx `libcef.dylib` 根目录
+- **窗口拖动**：`#if WINDOWS` Win32（ReleaseCapture + WM_NCLBUTTONDOWN）；macOS/Linux 用 Avalonia `BeginMoveDrag`（OSR 缓存 `PointerPressed` 的 `PointerPressedEventArgs`）
+- **托盘/窗口图标**：Windows 用 `.ico`，macOS/Linux 用 `.png`（`Assets/avalonia-logo.png`，平台判断资源名）
+- **DPAPI 密码**：仅 Windows 注入（`OperatingSystem.IsWindows()`）；其他平台 AES-GCM
+- **SMTC/全局热键**：`#if WINDOWS` 保护；非 Windows 走 Noop 兜底
+- **发布**：`dotnet/publish.ps1 -Platform win-x64,linux-x64,osx-x64,osx-arm64`（self-contained 默认），自动校验 BASS/CEF/WebAssets
+
+## 跨平台待办/注意
+
+- **osx-arm64**：`native/osx` 的 BASS dylib 是 x64 → arm Mac 需 Rosetta 2
+- **Linux 系统依赖**：BASS 需 ALSA（libasound2）；CEF 需常见图形库
+- **真机验证**（无 mac/linux 环境）：OSR 渲染、非 Windows 拖动（PointerPressed 是否触发）、托盘、音频输出
+- **Linux 无边框拖动**：`BeginMoveDrag` X11 OK，Wayland 受限
+- **macOS 分发**需签名 + notarization
+
+## 调试技巧
+
+- **CEF 远程调试**：Program.cs 临时加 `--remote-debugging-port=9333` cmdArg，用 raw CDP（Node WebSocket 连 `http://127.0.0.1:9333/json` 的 page target）eval JS / 看 console / 模拟输入。Playwright `connectOverCDP` 会报 "Browser context management is not supported"（CEF 限制），用 raw CDP。
+- **物理键盘测试**：CDP focus input 后 `WScript.Shell.SendKeys` 模拟真实键盘，验证 Avalonia→CEF 链路。
+- **日志**：bridge.log（CefUiBridge 操作）、provider.log（CefPageDataProvider）、eq.log（AudioEngine EQ 调试）、crash.log（未处理异常）、cef.log（Chromium）
+- **WebAssets 改动**后清 `cef-cache` 重启，否则显示旧缓存
 
 ## 服务器连接
 
-- **地址分内网/外网，连接时内网优先、不可达回退外网**（已实现于 `SubsonicClient.ConnectAsync`）
-- **服务器地址/用户名/密码均可配置**（持久化到 settings，支持多服务器切换，不硬编码）
-- 服务器地址与凭据由用户在设置页填写，不提交到仓库
+- 地址分内网/外网，连接时内网优先、不可达回退外网（`SubsonicClient.ConnectAsync`）
+- 多服务器配置持久化（settings.json，密码加密存储），不硬编码、不提交仓库
 
-## 多服务支持目标
+## 多服务支持
 
-- 目标协议：Subsonic（原生）、Navidrome、Jellyfin、Emby、Plex、AudioStation（群晖）等 NAS 音乐服务
-- 现状：Subsonic 协议族（Subsonic / Navidrome / Jellyfin 兼容模式 / Gonic）+ Emby + Plex 均已实现；AudioStation 规划中
-- Emby/Plex 走 `MusicServiceBase` 派生客户端（`EmbyMusicService` JSON / `PlexMusicService` XML）
-- 认证：Emby 用用户名密码 AuthenticateByName 或 API Key；Plex 用 `X-Plex-Token`（存 ApiKey 字段）
-- 扩展点：`MusicServiceFactory.Create` 按 `MusicServiceConfig.Type` 分支创建不同 `IMusicService` 实现
-
-## 服务器实现（重要，已验证）
-
-- 服务端是 **Gonic**（Go 实现，非原生 Subsonic/Navidrome），API 兼容但有脏数据：
-  - 认证用 **`p` 参数（明文密码）**，**不支持** token（`MD5(password+salt)` 会报 error 41）
-  - `album.artist` 返回 Go 内存地址（如 `0xc001b0a7c0`）、`year`/`track`/`path`/`size` 返回 `<nil>` 或地址
-  - `getArtists` 响应含非法 XML 控制字符（如 0x19），解析前需正则清理
-  - `song.artist`/`song.artistId`/`id`/`title`/`duration`/`coverArt` 字段正常
-  - id 前缀：`alb_`（专辑）、`trk_`（歌曲）、`art_`（艺术家）；coverArt 值形如 `album:alb_xxx`
+- 协议：Subsonic 族（Subsonic/Navidrome/Jellyfin/Gonic）+ Emby + Plex 已实现；AudioStation 规划中
+- 扩展点：`MusicServiceFactory.Create` 按 `MusicServiceConfig.Type` 分支
 - 曲库规模：约 2174 艺术家 / 28 个字母索引
 
-## 关键点
+## UI 布局规范（多次返工）
 
-- 播放走 BASS Mixer + DECODE 流，实现 Gapless + Crossfade
-- 音效：10 段 EQ + 预设、交叉淡入淡出、无缝、ReplayGain、DSP（混响/回声/合唱/立体声扩展/压缩器）、频谱可视化
-- 分 P1~P4 里程碑实现（见 PLAN.md）
-
-## UI 布局规范（重要，多次返工）
-
-- **所有列表/网格行的 Grid 列宽必须用固定宽度**（如 `40,36,180,48,32`），**禁止用 `*` 自适应列宽**
-- 用 `*` 会让标题列伸缩，导致右侧的时长/红心/加号等列随标题长度浮动、**收缩错位、不整齐**（用户多次反馈此问题）
-- 参考：歌曲列表行、播放队列弹窗、正在播放页队列等，均用固定列宽
-- 若容器宽度有限（如 320 面板），适当缩小固定列宽（如标题列 160）而不是改用 `*`
+- 所有列表/网格行 Grid 列宽**必须固定宽度**，**禁止 `*` 自适应列宽**（标题伸缩导致右侧列错位，用户多次反馈）
+- 容器窄（如 320 面板）时缩小固定列宽而非改用 `*`
 
 ## 来源项目
 
-本播放器服务的音乐库/Subsonic 服务托管在自建的 NAS 上。
+播放器服务的音乐库/Subsonic 服务托管在自建 NAS。
