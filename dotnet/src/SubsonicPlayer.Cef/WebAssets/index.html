@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsonic Player</title>
+    <link rel="stylesheet" href="app://ui/styles.css">
+</head>
+<body>
+    <div class="app-shell">
+        <!-- 左侧导航 -->
+        <aside class="sidebar" id="sidebar">
+            <nav class="nav-list" id="navList"></nav>
+            <div class="sidebar-bottom">
+                <button class="side-btn" id="settingsBtn">⚙ 设置</button>
+            </div>
+        </aside>
+
+        <!-- 右侧主区 -->
+        <div class="main-area">
+            <!-- 顶栏（HTML 自绘标题栏：拖动 + 窗口按钮） -->
+            <header class="topbar" id="titleBar">
+                <div class="topbar-left">
+                    <div class="brand-mini">
+                        <span class="brand-dot"></span>
+                        <span>Subsonic Player</span>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="搜索歌曲 / 专辑 / 艺术家">
+                </div>
+                <div class="topbar-right">
+                    <select id="serviceSelect" class="service-select"></select>
+                    <button class="icon-btn" id="openSettingsBtn" title="设置">
+                        <svg class="ic" width="18" height="18"><use href="#i-gear"/></svg>
+                    </button>
+                    <button class="icon-btn" id="topThemeBtn" title="深色/浅色">
+                        <svg class="ic" id="topThemeIcon" width="18" height="18"><use href="#i-moon"/></svg>
+                    </button>
+                    <div class="window-controls">
+                        <button class="win-btn" id="winMin" title="最小化">─</button>
+                        <button class="win-btn" id="winMax" title="最大化">□</button>
+                        <button class="win-btn win-close" id="winClose" title="关闭">✕</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 内容区 -->
+            <main class="content" id="content">
+                <div class="page" id="pageDiscover">
+                    <div class="discover-tabs" id="discoverTabs">
+                        <button class="dtab active" data-tab="random">随机推荐</button>
+                        <button class="dtab" data-tab="smart">智能推荐</button>
+                        <button class="dtab-refresh" id="discoverRefresh">换一批</button>
+                    </div>
+                    <div class="discover-tab-body" id="discoverTabBody"></div>
+                    <div id="discoverMore"></div>
+                    <div class="page-loading" id="discoverLoading" style="display:none">加载中...</div>
+                </div>
+                <div class="page" id="pageAlbums" style="display:none">
+                    <div class="section-title" id="albumsTitle">专辑</div>
+                    <div class="album-grid" id="albumsGrid"></div>
+                    <div class="page-loading" id="albumsLoading" style="display:none">加载中...</div>
+                </div>
+                <div class="page" id="pageAlbumDetail" style="display:none">
+                    <button class="back-btn" id="albumBack">← 返回</button>
+                    <div id="albumDetailBody"></div>
+                </div>
+                <div class="page" id="pageSearch" style="display:none">
+                    <div class="section-title" id="searchTitle">搜索</div>
+                    <div class="search-bar">
+                        <input type="text" id="pageSearchInput" placeholder="搜索歌曲 / 专辑 / 艺术家" class="search-page-input">
+                        <button class="btn-primary" id="pageSearchBtn">搜索</button>
+                    </div>
+                    <div id="searchBody">
+                        <div class="page-loading">输入关键词搜索歌曲 / 专辑 / 艺术家</div>
+                    </div>
+                </div>
+                <div class="page" id="pagePlaylists" style="display:none">
+                    <div class="section-title">歌单</div>
+                    <div class="album-grid" id="playlistsGrid"></div>
+                </div>
+                <div class="page" id="pagePlaylistDetail" style="display:none">
+                    <button class="back-btn" id="playlistBack">← 返回</button>
+                    <div id="playlistDetailBody"></div>
+                </div>
+                <div class="page" id="pageSongs" style="display:none">
+                    <div class="section-title">歌曲</div>
+                    <div class="song-list" id="songsList"></div>
+                </div>
+                <div class="page" id="pageArtists" style="display:none">
+                    <div class="page-with-alpha">
+                        <div class="section-title">艺术家</div>
+                        <div class="artist-grid" id="artistsGrid"></div>
+                        <div class="alpha-nav" id="artistAlpha"></div>
+                    </div>
+                </div>
+                <div class="page" id="pageArtistDetail" style="display:none">
+                    <button class="back-btn" id="artistBack">← 返回</button>
+                    <div id="artistDetailBody"></div>
+                </div>
+                <div class="page" id="pageFavorites" style="display:none">
+                    <div class="section-title">收藏</div>
+                    <div class="song-list" id="favoritesList"></div>
+                </div>
+                <div class="page" id="pageHistory" style="display:none">
+                    <div class="section-title">历史记录</div>
+                    <div class="song-list" id="historyList"></div>
+                </div>
+                <div class="page" id="pageBookmarks" style="display:none">
+                    <div class="section-title">书签</div>
+                    <div class="song-list" id="bookmarksList"></div>
+                </div>
+                <div class="page" id="pageNowPlaying" style="display:none">
+                    <div class="section-title">正在播放</div>
+                    <div class="np-full" id="npFullBody"></div>
+                </div>
+                <div class="page" id="pagePlaceholder" style="display:none">
+                    <div class="placeholder" id="placeholderText">请选择功能</div>
+                </div>
+            </main>
+        </div>
+
+        <!-- 底部播放栏（Roon 风格） -->
+        <footer class="player-bar" id="playerBar">
+            <!-- SVG 图标定义（symbol sprite，避免 unicode 闪烁/缺字） -->
+            <svg width="0" height="0" style="position:absolute">
+                <defs>
+                    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+                    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></symbol>
+                    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></symbol>
+                    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z"/></symbol>
+                    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></symbol>
+                    <symbol id="i-heart-outline" viewBox="0 0 24 24"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></symbol>
+                    <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M4 16h16v2H4zm0-6h16v2H4zm0-6h16v2H4z"/></symbol>
+                    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3z"/></symbol>
+                    <symbol id="i-eq" viewBox="0 0 24 24"><path d="M10 20h4V4h-4v16zm-6 0h4v-8H4v8zM16 9v11h4V9h-4z"/></symbol>
+                    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></symbol>
+                    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></symbol>
+                    <symbol id="i-repeat-one" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/></symbol>
+                    <symbol id="i-sleep" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></symbol>
+                    <symbol id="i-mini" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></symbol>
+                    <symbol id="i-vol" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
+                    <!-- 导航图标（Roon 风格线性） -->
+                    <symbol id="i-compass" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm4-13l-5 2-2 5 5-2 2-5z"/></symbol>
+                    <symbol id="i-now" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+                    <symbol id="i-album" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm0-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0-7a6 6 0 0 0-6 6h2a4 4 0 0 1 4-4V6z"/></symbol>
+                    <symbol id="i-artist" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-3 0-8 1.5-8 4.5V20h16v-1.5c0-3-5-4.5-8-4.5z"/></symbol>
+                    <symbol id="i-music" viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></symbol>
+                    <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 6h13v2H3zm0 5h13v2H3zm0 5h13v2H3zm17-10h1v14h-2V6h1z"/></symbol>
+                    <symbol id="i-heart-nav" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></symbol>
+                    <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9L8.8 12H6a7 7 0 1 1 7 7c-1.9 0-3.7-.8-5-2l-1.4 1.4A9 9 0 1 0 13 3zm-1 5v5l4.3 2.5.7-1.2-3.5-2V8H12z"/></symbol>
+                    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-4 7 4V5a2 2 0 0 0-2-2z"/></symbol>
+                    <symbol id="i-search" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></symbol>
+                    <symbol id="i-gear" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 15.6 12 3.61 3.61 0 0 1 12 15.6z"/></symbol>
+                    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.5-9.41A9.03 9.03 0 0 0 12 3z"/></symbol>
+                    <symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0-5a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zM3 11h2a1 1 0 0 1 0 2H3a1 1 0 0 1 0-2zm16 0h2a1 1 0 0 1 0 2h-2a1 1 0 0 1 0-2zM5.64 6.05l1.41 1.41a1 1 0 0 1-1.41 1.41L4.22 7.46a1 1 0 0 1 1.41-1.41zm12.72 12.72l1.41 1.41a1 1 0 0 1-1.41 1.41l-1.42-1.41a1 1 0 0 1 1.42-1.41zM18.36 6.05a1 1 0 0 1 1.41 1.41l-1.41 1.41a1 1 0 1 1-1.41-1.41l1.41-1.41zM5.64 17.95l1.41-1.41a1 1 0 0 1 1.41 1.41l-1.41 1.41a1 1 0 0 1-1.41-1.41z"/></symbol>
+                </defs>
+            </svg>
+
+            <div class="pb-left">
+                <span class="pb-cover-wrap">
+                    <img class="pb-cover" id="pbCover" src="" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <svg class="pb-cover-fb" width="26" height="26"><use href="#i-album"/></svg>
+                </span>
+                <div class="pb-info">
+                    <div class="pb-title" id="pbTitle">未在播放</div>
+                    <div class="pb-artist" id="pbArtist"></div>
+                </div>
+                <button class="pb-fav" id="pbFav" title="收藏">
+                    <svg class="ic" id="pbFavIcon" width="18" height="18"><use href="#i-heart-outline"/></svg>
+                </button>
+            </div>
+            <div class="pb-center">
+                <div class="pb-controls">
+                    <button class="ctl-btn" id="btnPrev" title="上一首">
+                        <svg class="ic" width="20" height="20"><use href="#i-prev"/></svg>
+                    </button>
+                    <button class="ctl-btn ctl-main" id="btnPlay" title="播放/暂停">
+                        <svg class="ic ic-main" id="btnPlayIcon" width="22" height="22"><use href="#i-play"/></svg>
+                    </button>
+                    <button class="ctl-btn" id="btnNext" title="下一首">
+                        <svg class="ic" width="20" height="20"><use href="#i-next"/></svg>
+                    </button>
+                </div>
+                <div class="pb-progress">
+                    <span class="pb-time" id="pbPos">0:00</span>
+                    <div class="pb-track" id="pbTrack">
+                        <div class="pb-fill" id="pbFill"></div>
+                        <div class="pb-thumb" id="pbThumb"></div>
+                    </div>
+                    <span class="pb-time" id="pbDur">0:00</span>
+                </div>
+            </div>
+            <div class="pb-right">
+                <button class="ctl-btn" id="btnLyrics" title="歌词"><svg class="ic" width="17" height="17"><use href="#i-lyrics"/></svg></button>
+                <button class="ctl-btn" id="btnQueue" title="播放队列"><svg class="ic" width="17" height="17"><use href="#i-queue"/></svg></button>
+                <button class="ctl-btn" id="btnEq" title="均衡器"><svg class="ic" width="17" height="17"><use href="#i-eq"/></svg></button>
+                <button class="ctl-btn" id="btnMode" title="播放模式"><svg class="ic" id="modeIcon" width="17" height="17"><use href="#i-repeat"/></svg></button>
+                <button class="ctl-btn" id="btnSleep" title="睡眠定时器"><svg class="ic" width="17" height="17"><use href="#i-sleep"/></svg></button>
+                <button class="ctl-btn" id="btnMini" title="迷你播放器"><svg class="ic" width="17" height="17"><use href="#i-mini"/></svg></button>
+                <svg class="ic" width="18" height="18"><use href="#i-vol"/></svg>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.01" value="0.8">
+            </div>
+        </footer>
+    </div>
+
+    <!-- 播放队列侧面板 -->
+    <div class="queue-panel" id="queuePanel" style="right:-340px">
+        <div class="queue-header">
+            <h3>播放队列</h3>
+            <button class="modal-close" id="queueClose">✕</button>
+        </div>
+        <div class="queue-body" id="queueBody"></div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal-mask" id="settingsModal" style="display:none">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>设置</h3>
+                <button class="modal-close" id="settingsClose">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>音乐服务器</h4>
+                    <div id="serviceList"></div>
+                </div>
+                <div class="settings-section">
+                    <h4 id="svcFormTitle">编辑服务器</h4>
+                    <div class="svc-form">
+                        <input id="svcName" placeholder="名称" class="svc-input">
+                        <input id="svcLan" placeholder="内网地址 http://ip:port" class="svc-input">
+                        <input id="svcWan" placeholder="外网地址" class="svc-input">
+                        <input id="svcUser" placeholder="用户名" class="svc-input">
+                        <input id="svcPass" type="password" placeholder="密码" class="svc-input">
+                        <div class="svc-actions">
+                            <button class="btn-primary" id="svcSave">保存</button>
+                            <button class="btn-ghost" id="svcNew">新建</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="app://ui/app.js"></script>
+</body>
+</html>

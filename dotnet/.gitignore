@@ -1,0 +1,29 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.csproj.user
+
+# Runtime data (may contain credentials)
+settings.json
+servers.json
+*.local.json
+
+# Debug artifacts
+stderr.txt
+verify*.txt
+*.log
+
+# Native DLLs are committed as source? (see note)
+# native/ is tracked; bin/ copies are generated.
+
+# Release packages
+dist/
+*.zip
+*.tar.gz
+release/

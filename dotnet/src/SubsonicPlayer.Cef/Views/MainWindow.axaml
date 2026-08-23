@@ -1,0 +1,17 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="SubsonicPlayer.Views.MainWindow"
+        Title="Subsonic 音乐播放器"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="0"
+        Background="#0A0A0C"
+        Width="1200" Height="800"
+        MinWidth="960" MinHeight="640"
+        KeyDown="OnKeyDown">
+
+    <!-- CEF 内容区：HTML 全屏接管（含自绘标题栏/窗口按钮/拖动） -->
+    <Border x:Name="BrowserHost" Background="#0A0A0C" />
+</Window>

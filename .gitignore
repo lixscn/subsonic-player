@@ -1,27 +1,9 @@
-# Build outputs
-bin/
-obj/
-*.user
-*.suo
+# Chromium / CEF runtime caches
+DawnCache/
+GPUCache/
+debug.log
 
-# Visual Studio / Rider
-.vs/
-.idea/
-*.csproj.user
-
-# Runtime data (may contain credentials)
-settings.json
-servers.json
-*.local.json
-
-# Debug artifacts
-stderr.txt
-verify*.txt
-*.log
-
-# Native DLLs are committed as source? (see note)
-# native/ is tracked; bin/ copies are generated.
-
-# Release packages
+# Build & release outputs
+dist/
+publish/
 *.zip
-release/
