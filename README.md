@@ -57,6 +57,8 @@ Roon 风格 HTML 界面 · 完整音效链路（EQ/DSP/频谱）· Gapless + 淡
 | AudioStation（群晖 DSM） | 原生 | `AudioStationMusicService`（`SYNO.AudioStation.*`） |
 
 > 自用服务端为「道理鱼音乐」（Gonic），其 API 含非标准脏数据，客户端已做适配（详见 `dotnet/MEMORY.md`）。
+>
+> **关于 Navidrome / Jellyfin / Gonic**：三者均实现 Subsonic 兼容 API，故**共用 `SubsonicMusicService`**（`SubsonicClient`），无需独立协议客户端；在「设置 → 音乐服务器 → 类型」里选对应类型即可。
 
 ## 🧱 技术栈
 

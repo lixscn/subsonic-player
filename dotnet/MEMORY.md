@@ -116,6 +116,7 @@
 
 - 协议：Subsonic 族（Subsonic/Navidrome/Jellyfin/Gonic）+ Emby + Plex 已实现；AudioStation 已接入（认证+URL 完成，浏览待真机验证）
 - 扩展点：`MusicServiceFactory.Create` 按 `MusicServiceConfig.Type` 分支
+- **设置页「服务类型」下拉**：`SaveService` 现接收 `type` 参数并持久化 `MusicServiceConfig.Type`；`GetServices` 返回 `type`。此前保存不设类型（恒为 Subsonic），Emby/Plex/AudioStation 无法在 UI 选择——现已可切。Navidrome/Gonic/Jellyfin 走 Subsonic 兼容（`SubsonicMusicService`），无需独立客户端。
 - 曲库规模：约 2174 艺术家 / 28 个字母索引
 
 ## UI 布局规范（多次返工）

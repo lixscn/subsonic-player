@@ -1087,6 +1087,7 @@ async function renderServiceList() {
                 <div class="svc-name">${esc(s.name)}</div>
                 <div class="svc-sub">${esc(s.lanUrl || s.wanUrl || '')}</div>
             </div>
+            <span class="svc-type">${esc(s.type || 'Subsonic')}</span>
             <div style="display:flex;gap:4px">
                 <button class="svc-edit" data-svc-edit="${esc(s.id)}" title="编辑">✎</button>
                 <button class="svc-del" data-svc-del="${esc(s.id)}" title="删除">🗑</button>
@@ -1108,6 +1109,7 @@ async function renderServiceList() {
             if (!svc) return;
             _editingSvcId = svc.id;
             document.getElementById('svcName').value = svc.name || '';
+            document.getElementById('svcType').value = svc.type || 'Subsonic';
             document.getElementById('svcLan').value = svc.lanUrl || '';
             document.getElementById('svcWan').value = svc.wanUrl || '';
             document.getElementById('svcUser').value = svc.username || '';
@@ -1128,6 +1130,7 @@ async function renderServiceList() {
 
 function _clearSvcForm() {
     document.getElementById('svcName').value = '';
+    document.getElementById('svcType').value = 'Subsonic';
     document.getElementById('svcLan').value = '';
     document.getElementById('svcWan').value = '';
     document.getElementById('svcUser').value = '';
@@ -1143,6 +1146,7 @@ function initSettingsModalEvents() {
         const id = _editingSvcId || 'svc_' + Date.now();
         await Bridge.invoke('saveService', id,
             document.getElementById('svcName').value,
+            document.getElementById('svcType').value,
             document.getElementById('svcLan').value,
             document.getElementById('svcWan').value,
             document.getElementById('svcUser').value,

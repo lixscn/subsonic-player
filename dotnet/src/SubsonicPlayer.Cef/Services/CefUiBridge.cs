@@ -629,6 +629,7 @@ public sealed class CefUiBridge : IDisposable
             {
                 ["id"] = s.Id,
                 ["name"] = s.Name,
+                ["type"] = s.Type.ToString(),
                 ["lanUrl"] = s.LanUrl,
                 ["wanUrl"] = s.WanUrl,
                 ["username"] = s.Username,
@@ -638,8 +639,10 @@ public sealed class CefUiBridge : IDisposable
         };
     }
 
-    public void SaveService(string id, string name, string lanUrl, string wanUrl, string username, string password)
+    public void SaveService(string id, string name, string type, string lanUrl, string wanUrl, string username, string password)
     {
+        // 解析客户端传入的服务类型字符串（Subsonic/Navidrome/Jellyfin/Gonic/Emby/Plex/AudioStation）
+        var serviceType = Enum.TryParse<Models.MusicServiceType>(type, true, out var parsed) ? parsed : Models.MusicServiceType.Subsonic;
         Dispatcher.UIThread.Post(() =>
         {
             var config = AppServices.Settings.Settings.Services.FirstOrDefault(s => s.Id == id);
@@ -650,6 +653,7 @@ public sealed class CefUiBridge : IDisposable
                 {
                     Id = id,
                     Name = name,
+                    Type = serviceType,
                     LanUrl = lanUrl,
                     WanUrl = wanUrl,
                     Username = username,
@@ -659,6 +663,7 @@ public sealed class CefUiBridge : IDisposable
             else
             {
                 config.Name = name;
+                config.Type = serviceType;
                 config.LanUrl = lanUrl;
                 config.WanUrl = wanUrl;
                 config.Username = username;
