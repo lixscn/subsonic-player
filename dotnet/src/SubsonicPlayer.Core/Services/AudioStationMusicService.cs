@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,15 +11,18 @@ using SubsonicPlayer.Models;
 namespace SubsonicPlayer.Services;
 
 /// <summary>
-/// 群晖 AudioStation（DSM）协议实现：SYNO.AudioStation.* 系列 webapi（JSON）。
-/// 已实现：API 发现 + 登录（SYNO.API.Auth → sid）、封面/播放/下载 URL 构造，以及
-/// 按 Song.list 聚合的曲库浏览（艺术家/专辑/歌曲/搜索）。字段路径按已知 Synology API 形状映射，
-/// 解析失败静默降级为空（不崩溃），真正字段需在真实 DSM 上确认。
+/// 群晖 AudioStation（DSM）协议实现，按 StreamMusic 抓包文档 audioStation 接口对齐：
+/// 认证走 entry.cgi（SYNO.API.Auth，POST body），曲库走 AudioStation/song.cgi、artist.cgi、album.cgi、cover.cgi、stream.cgi、search.cgi。
+/// 关键差异（相对 Subsonic）：艺术家/专辑无独立 id，按 song_tag 的 album/album_artist 名称识别；
+/// Song.list 为 POST body；部分响应字段是「字符串化的 JSON」需二次解析。
+/// 解析失败静默降级（返回空/部分），不崩溃。
 /// </summary>
 public class AudioStationMusicService : MusicServiceBase
 {
-    private static readonly string[] ApiNames =
-        { "SYNO.API.Auth", "SYNO.AudioStation.Folder", "SYNO.AudioStation.Song", "SYNO.AudioStation.CoverArt" };
+    private static readonly string PathEntry = "entry.cgi";            // SYNO.API.Auth
+    private static readonly string PathSong = "AudioStation/song.cgi"; // SYNO.AudioStation.Song
+    private static readonly string PathCover = "AudioStation/cover.cgi";
+    private static readonly string PathStream = "AudioStation/stream.cgi";
 
     private readonly MusicServiceConfig _config;
     private readonly HttpClient _http;
@@ -41,7 +45,9 @@ public class AudioStationMusicService : MusicServiceBase
         return (lan.Length > 0 ? lan : wan).TrimEnd('/');
     }
 
-    // ============ 连接与认证 ============
+    private string AuthSuffix => string.IsNullOrEmpty(_sid) ? "" : $"&_sid={_sid}";
+
+    // ============ 连接与认证（entry.cgi POST body） ============
 
     public override async Task<bool> ConnectAsync()
     {
@@ -52,12 +58,17 @@ public class AudioStationMusicService : MusicServiceBase
             if (string.IsNullOrEmpty(_baseUrl))
                 return false;
 
-            var query = string.Join(",", ApiNames);
-            _ = await GetJsonAsync($"webapi/query.cgi?api=SYNO.API.Info&version=1&method=query&query={Uri.EscapeDataString(query)}", ct);
+            var form = new Dictionary<string, string>
+            {
+                ["version"] = "6",
+                ["api"] = "SYNO.API.Auth",
+                ["method"] = "login",
+                ["session"] = "audiostation",
+                ["account"] = _config.Username,
+                ["passwd"] = _config.Password,
+            };
 
-            var login = await GetJsonAsync(
-                $"webapi/auth.cgi?api=SYNO.API.Auth&version=6&method=login&account={Uri.EscapeDataString(_config.Username)}" +
-                $"&passwd={Uri.EscapeDataString(_config.Password)}&session=AudioStation&format=sid", ct);
+            var login = await PostJsonAsync(PathEntry, form, ct);
             if (login is { } j && j.TryGetProperty("data", out var data) && data.TryGetProperty("sid", out var sidEl))
                 _sid = sidEl.GetString();
             return !string.IsNullOrEmpty(_sid);
@@ -68,13 +79,40 @@ public class AudioStationMusicService : MusicServiceBase
         }
     }
 
-    private async Task<JsonElement?> GetJsonAsync(string path, CancellationToken ct = default)
+    private async Task<JsonElement?> PostJsonAsync(string path, Dictionary<string, string> form, CancellationToken ct)
     {
         try
         {
-            var url = $"{_baseUrl}/{path}";
-            var resp = await _http.GetStringAsync(url, ct);
-            using var doc = JsonDocument.Parse(resp);
+            var url = $"{_baseUrl}/webapi/{path}";
+            var content = new FormUrlEncodedContent(form);
+            var resp = await _http.PostAsync(url, content, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            return ParseJson(body);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<JsonElement?> GetJsonAsync(string url, CancellationToken ct = default)
+    {
+        try
+        {
+            var body = await _http.GetStringAsync(url, ct);
+            return ParseJson(body);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static JsonElement? ParseJson(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
             return doc.RootElement.Clone();
         }
         catch
@@ -83,7 +121,7 @@ public class AudioStationMusicService : MusicServiceBase
         }
     }
 
-    private string AuthSuffix => string.IsNullOrEmpty(_sid) ? "" : $"&_sid={_sid}";
+    // ============ 字段解析 ============
 
     private static string Str(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
@@ -91,41 +129,73 @@ public class AudioStationMusicService : MusicServiceBase
     private static int IntOf(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
 
+    /// <summary>部分节点返回「字符串化的 JSON」，这里对字符串型属性尝试二次解析。</summary>
+    private static JsonElement Unwrap(JsonElement e)
+    {
+        if (e.ValueKind == JsonValueKind.String)
+        {
+            var s = e.GetString();
+            if (!string.IsNullOrEmpty(s) && (s[0] == '{' || s[0] == '['))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(s);
+                    return doc.RootElement.Clone();
+                }
+                catch { /* 保持原样 */ }
+            }
+        }
+        return e;
+    }
+
+    /// <summary>轻量 JsonElement 访问器（含 unwrap）。</summary>
+    private readonly struct JeObj
+    {
+        private readonly JsonElement _e;
+        public JeObj(JsonElement? j) => _e = j ?? default;
+        public bool Ok => _e.ValueKind == JsonValueKind.Object;
+        public JeObj Get(string name) =>
+            _e.ValueKind == JsonValueKind.Object && _e.TryGetProperty(name, out var v)
+                ? new JeObj(Unwrap(v))
+                : default;
+        public string Str(string name) => Get(name).RawStr;
+        public int Int(string name) => Get(name).RawInt;
+        public string RawStr => _e.ValueKind == JsonValueKind.String ? _e.GetString() ?? "" : "";
+        public int RawInt => _e.ValueKind == JsonValueKind.Number ? _e.GetInt32() : 0;
+        public IEnumerable<JeObj> Array(string name)
+        {
+            if (_e.ValueKind != JsonValueKind.Object) yield break;
+            if (!_e.TryGetProperty(name, out var v)) yield break;
+            v = Unwrap(v);
+            if (v.ValueKind == JsonValueKind.Array)
+                foreach (var x in v.EnumerateArray())
+                    yield return new JeObj(x);
+        }
+    }
+
     private static Song MapSong(JsonElement e)
     {
         var s = new Song { Id = Str(e, "id"), Title = Str(e, "title") };
+        var add = new JeObj(Unwrap(GetProp(e, "additional")));
+        var tag = add.Get("song_tag");
+        var audio = add.Get("song_audio");
 
-        if (e.TryGetProperty("artist_artist", out var aa) && aa.ValueKind == JsonValueKind.Array && aa.GetArrayLength() > 0)
-        {
-            var a0 = aa[0];
-            s.Artist = Str(a0, "name");
-            s.ArtistId = Str(a0, "id");
-        }
-        if (e.TryGetProperty("album_album", out var ab) && ab.ValueKind == JsonValueKind.Array && ab.GetArrayLength() > 0)
-        {
-            var a0 = ab[0];
-            s.Album = Str(a0, "title");
-            s.AlbumId = Str(a0, "id");
-        }
-        if (e.TryGetProperty("additional", out var add) && add.ValueKind == JsonValueKind.Object)
-        {
-            s.Duration = IntOf(add, "duration");
-            if (add.TryGetProperty("cover", out var cov) && cov.ValueKind == JsonValueKind.Object)
-                s.CoverArtId = Str(cov, "id");
-            if (add.TryGetProperty("song_tag", out var tag) && tag.ValueKind == JsonValueKind.Object)
-            {
-                s.Genre = Str(tag, "genre");
-                s.Year = IntOf(tag, "year");
-                s.Track = IntOf(tag, "track");
-                if (s.Album == "") s.Album = Str(tag, "album");
-                if (s.Artist == "") s.Artist = Str(tag, "album_artist");
-                if (s.Artist == "") s.Artist = Str(tag, "artist");
-            }
-        }
+        s.Album = tag.Str("album");
+        s.Artist = tag.Str("album_artist");
+        if (s.Artist == "") s.Artist = tag.Str("artist");
+        s.AlbumId = s.Album;       // AudioStation 无专辑 id，用名称
+        s.ArtistId = s.Artist;     // 无艺术家 id，用名称
+        s.Genre = tag.Str("genre");
+        s.Year = tag.Int("year");
+        s.Track = tag.Int("track");
+        s.Duration = audio.Int("duration");
         return s;
     }
 
-    /// <summary>分页拉取共享曲库全部歌曲（结果缓存，避免重复请求）。</summary>
+    private static JsonElement GetProp(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) ? Unwrap(v) : default;
+
+    /// <summary>分页拉取共享曲库全部歌曲（结果缓存）。</summary>
     private async Task<List<Song>> FetchSongsAsync(CancellationToken ct)
     {
         if (_songCache is not null)
@@ -135,20 +205,28 @@ public class AudioStationMusicService : MusicServiceBase
         try
         {
             int offset = 0;
-            const int limit = 500;
+            const int limit = 1000;
             while (true)
             {
-                var json = await GetJsonAsync(
-                    $"webapi/entry.cgi?api=SYNO.AudioStation.Song&version=1&method=list&library=shared" +
-                    $"&sort_key=title&sort_direction=ASC&limit={limit}&offset={offset}" +
-                    $"&additional={Uri.EscapeDataString("[\"song_tag\",\"duration\",\"cover\"]")}{AuthSuffix}", ct);
+                var form = new Dictionary<string, string>
+                {
+                    ["version"] = "3",
+                    ["api"] = "SYNO.AudioStation.Song",
+                    ["method"] = "list",
+                    ["library"] = "all",
+                    ["offset"] = offset.ToString(),
+                    ["limit"] = limit.ToString(),
+                    ["additional"] = "[\"song_tag\",\"song_audio\"]",
+                    ["_sid"] = _sid ?? "",
+                };
+                var json = await PostJsonAsync(PathSong, form, ct);
                 if (json is not { } j || !j.TryGetProperty("data", out var data))
                     break;
-                if (!data.TryGetProperty("songs", out var arr) || arr.ValueKind != JsonValueKind.Array)
+                var songs = GetProp(data, "songs");
+                if (songs.ValueKind != JsonValueKind.Array)
                     break;
-
-                foreach (var e in arr.EnumerateArray())
-                    result.Add(MapSong(e));
+                foreach (var e2 in songs.EnumerateArray())
+                    result.Add(MapSong(e2));
 
                 var total = data.TryGetProperty("total", out var t) ? t.GetInt32() : 0;
                 offset += limit;
@@ -156,10 +234,7 @@ public class AudioStationMusicService : MusicServiceBase
                     break;
             }
         }
-        catch
-        {
-            // 失败返回已收集部分
-        }
+        catch { /* 返回已收集部分 */ }
         _songCache = result;
         return result;
     }
@@ -179,45 +254,59 @@ public class AudioStationMusicService : MusicServiceBase
 
     public override async Task<List<ArtistIndex>> GetArtistsAsync(CancellationToken ct = default)
     {
-        var songs = await FetchSongsAsync(ct);
-        return songs
-            .Where(s => s.Artist != "")
-            .GroupBy(s => s.ArtistId != "" ? s.ArtistId : s.Artist, StringComparer.Ordinal)
-            .Select(g => new Artist { Id = g.First().ArtistId, Name = g.First().Artist, AlbumCount = g.Select(x => x.AlbumId).Where(x => x != "").Distinct().Count() })
-            .GroupBy(a => char.IsLetter(a.Name[0]) ? char.ToUpper(a.Name[0]).ToString() : "#")
-            .OrderBy(gi => gi.Key)
-            .Select(gi => new ArtistIndex { Name = gi.Key, Artists = gi.ToList() })
-            .ToList();
+        try
+        {
+            var songs = await FetchSongsAsync(ct);
+            return songs
+                .Where(s => s.Artist != "")
+                .GroupBy(s => s.Artist, StringComparer.Ordinal)
+                .Select(g => new Artist { Id = g.Key, Name = g.Key, AlbumCount = g.Select(x => x.Album).Where(x => x != "").Distinct().Count() })
+                .GroupBy(a => char.IsLetter(a.Name[0]) ? char.ToUpper(a.Name[0]).ToString() : "#")
+                .OrderBy(gi => gi.Key)
+                .Select(gi => new ArtistIndex { Name = gi.Key, Artists = gi.ToList() })
+                .ToList();
+        }
+        catch { return new List<ArtistIndex>(); }
     }
 
     public override async Task<List<Album>> GetAlbumListAsync(string type, int size = 20, int offset = 0, CancellationToken ct = default)
     {
-        var songs = await FetchSongsAsync(ct);
-        var albums = songs
-            .Where(s => s.AlbumId != "" || s.Album != "")
-            .GroupBy(s => s.AlbumId != "" ? s.AlbumId : s.Album, StringComparer.Ordinal)
-            .Select(g => BuildAlbum(g.Key, g.First().Album, g.First().Artist, g.ToList()))
-            .ToList();
-        return albums.Skip(offset).Take(size).ToList();
+        try
+        {
+            var songs = await FetchSongsAsync(ct);
+            return songs
+                .Where(s => s.Album != "")
+                .GroupBy(s => s.Album, StringComparer.Ordinal)
+                .Select(g => BuildAlbum(g.Key, g.Key, g.First().Artist, g.ToList()))
+                .Skip(offset).Take(size).ToList();
+        }
+        catch { return new List<Album>(); }
     }
 
     public override async Task<Album?> GetAlbumAsync(string id, CancellationToken ct = default)
     {
-        var songs = await FetchSongsAsync(ct).ConfigureAwait(false);
-        var list = songs.Where(s => s.AlbumId == id || s.Album == id).ToList();
-        if (list.Count == 0)
-            return null;
-        return BuildAlbum(id, list[0].Album, list[0].Artist, list);
+        try
+        {
+            var songs = await FetchSongsAsync(ct).ConfigureAwait(false);
+            var list = songs.Where(s => s.Album == id).ToList();
+            if (list.Count == 0) return null;
+            return BuildAlbum(id, id, list[0].Artist, list);
+        }
+        catch { return null; }
     }
 
     public override async Task<List<Album>> GetArtistAlbumsAsync(string artistId, CancellationToken ct = default)
     {
-        var songs = await FetchSongsAsync(ct);
-        return songs
-            .Where(s => s.ArtistId == artistId || s.Artist == artistId)
-            .GroupBy(s => s.AlbumId != "" ? s.AlbumId : s.Album, StringComparer.Ordinal)
-            .Select(g => BuildAlbum(g.Key, g.First().Album, g.First().Artist, g.ToList()))
-            .ToList();
+        try
+        {
+            var songs = await FetchSongsAsync(ct);
+            return songs
+                .Where(s => s.Artist == artistId)
+                .GroupBy(s => s.Album, StringComparer.Ordinal)
+                .Select(g => BuildAlbum(g.Key, g.Key, artistId, g.ToList()))
+                .ToList();
+        }
+        catch { return new List<Album>(); }
     }
 
     public override async Task<List<Song>> GetRandomSongsAsync(int size = 10, CancellationToken ct = default)
@@ -236,28 +325,23 @@ public class AudioStationMusicService : MusicServiceBase
                      || s.Album.Contains(q, StringComparison.OrdinalIgnoreCase))
             .Take(count)
             .ToList();
-
         var result = new SearchResult { Songs = hits };
-        result.Albums = hits
-            .Where(s => s.AlbumId != "" || s.Album != "")
-            .GroupBy(s => s.AlbumId != "" ? s.AlbumId : s.Album, StringComparer.Ordinal)
-            .Select(g => BuildAlbum(g.Key, g.First().Album, g.First().Artist, g.ToList()))
-            .ToList();
-        result.Artists = hits
-            .Where(s => s.Artist != "")
-            .GroupBy(s => s.ArtistId != "" ? s.ArtistId : s.Artist, StringComparer.Ordinal)
-            .Select(g => new Artist { Id = g.First().ArtistId, Name = g.First().Artist })
-            .ToList();
+        result.Albums = hits.Where(s => s.Album != "")
+            .GroupBy(s => s.Album, StringComparer.Ordinal)
+            .Select(g => BuildAlbum(g.Key, g.Key, g.First().Artist, g.ToList())).ToList();
+        result.Artists = hits.Where(s => s.Artist != "")
+            .GroupBy(s => s.Artist, StringComparer.Ordinal)
+            .Select(g => new Artist { Id = g.Key, Name = g.Key }).ToList();
         return result;
     }
 
     // ============ URL ============
 
     public override string GetStreamUrl(string songId)
-        => $"{_baseUrl}/webapi/entry.cgi?api=SYNO.AudioStation.Song&version=1&method=download&library=shared&id={Uri.EscapeDataString(songId)}{AuthSuffix}";
+        => $"{_baseUrl}/webapi/{PathStream}?version=2&api=SYNO.AudioStation.Stream&method=stream&id={Uri.EscapeDataString(songId)}{AuthSuffix}";
 
     public override string GetDownloadUrl(string songId) => GetStreamUrl(songId);
 
     public override string GetCoverArtUrl(string coverArtId, int size = 300)
-        => $"{_baseUrl}/webapi/entry.cgi?api=SYNO.AudioStation.CoverArt&version=1&method=getcover&library=shared&id={Uri.EscapeDataString(coverArtId)}{AuthSuffix}";
+        => $"{_baseUrl}/webapi/{PathCover}?version=1&api=SYNO.AudioStation.Cover&method=getsongcover&library=all&id={Uri.EscapeDataString(coverArtId)}{AuthSuffix}";
 }
