@@ -14,7 +14,7 @@
 
 - `src/SubsonicPlayer.Core`：共享逻辑（BASS 音频引擎、PlaybackService、AppServices、Subsonic/Emby/Plex 客户端、歌词搜索）
 - `src/SubsonicPlayer.Cef`：**主力**。HTML UI（WebAssets）+ CefGlue.Avalonia
-- `src/SubsonicPlayer.Desktop`：Avalonia 原版 XAML UI，**已搁置**（不再维护 CEF 界面）
+- `src/SubsonicPlayer.Mobile`：移动端（规划中）
 - `publish.ps1`：全平台发布脚本
 
 ## UI 技术（CEF 迁移，重要）

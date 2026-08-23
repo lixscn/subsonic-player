@@ -241,8 +241,8 @@ SubsonicPlayer.sln
 ├── src/SubsonicPlayer.Core/          # net10.0  纯共享库
 │   ├── Models / Services（SubsonicClient、AudioEngine、Playback、Library、
 │   │   Settings、Favorites、Lyrics…）/ ViewModels
-├── src/SubsonicPlayer.Desktop/       # 现有工程改造：net10.0-windows10.0.19041.0 + net10.0
-│   ├── Views / App.axaml / MainWindow / Tray / SMTC / 全局热键（#if WINDOWS）
+├── src/SubsonicPlayer.Cef/           # 主力 UI：net10.0-windows10.0.19041.0 + net10.0
+│   ├── WebAssets / MainWindow / Tray / SMTC / 全局热键（#if WINDOWS / CefGlue OSR）
 └── src/SubsonicPlayer.Mobile/        # net10.0-android + net10.0-ios（新工程）
     ├── 移动端 App.axaml + 页面（引用 Core 的 ViewModels）
     ├── Android：MainActivity / manifest / MediaSessionService

@@ -1,7 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/SubsonicPlayer.Core/SubsonicPlayer.Core.csproj" />
-    <Project Path="src/SubsonicPlayer.Desktop/SubsonicPlayer.Desktop.csproj" />
     <Project Path="src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj" />
   </Folder>
 </Solution>

@@ -6,7 +6,6 @@ Subsonic Player — 面向 NAS 音乐服务的桌面播放器（Roon 风格 HTML
 
 - `dotnet/src/SubsonicPlayer.Core`：共享逻辑（BASS 音频、PlaybackService、AppServices、服务客户端、歌词）
 - `dotnet/src/SubsonicPlayer.Cef`：**主力**，HTML UI（`WebAssets/`）+ CefGlue.Avalonia（OSR）
-- `dotnet/src/SubsonicPlayer.Desktop`：Avalonia XAML 原版，**搁置**
 - `dotnet/publish.ps1`：全平台发布脚本
 
 ## 常用命令（在 `dotnet/` 目录执行）

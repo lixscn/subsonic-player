@@ -34,7 +34,7 @@
 
 ### 5. 多平台适配（P5/P6 里程碑）
 - 已加入 `PLAN.md` P5；详细方案见 `docs/multi-platform-plan.md`（P5 桌面三平台 + P6 移动端专项）
-- **进行中**：单核心（`src/SubsonicPlayer.Core`）+ 多界面（`src/SubsonicPlayer.Desktop` / `src/SubsonicPlayer.Mobile`）拆分解耦已完成，桌面双 TFM 编译通过
+- **进行中**：单核心（`src/SubsonicPlayer.Core`）+ 多界面（`src/SubsonicPlayer.Cef` / `src/SubsonicPlayer.Mobile`）解耦；Avalonia XAML 原版 `src/SubsonicPlayer.Desktop` 已移除，UI 以 CEF/HTML 为主力
 - 剩余：macOS/Linux 平台验证、移动端 workload 安装与启动、SMTC 缩略图（见 §7）
 
 ### 6. Emby / Plex 收藏页适配
