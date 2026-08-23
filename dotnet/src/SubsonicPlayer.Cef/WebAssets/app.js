@@ -20,6 +20,18 @@ const Bridge = {
     },
 };
 
+// ============ 双击去重 ============
+// 鼠标双击会触发两次 click（就连桌面播放器的双击播放也会），若两次 click 命中同一播放动作，
+// 会重复执行导致歌曲连续加载两次。playOnce 保证同一 key 的播放在 400ms 窗口内只触发一次
+// （取系统双击判定时间上限，可靠拦截双击，同时不影响快速重播不同歌曲）。
+let _lastPlay = { key: '', at: 0 };
+function playOnce(key, fn) {
+    const now = Date.now();
+    if (key === _lastPlay.key && now - _lastPlay.at < 400) return;
+    _lastPlay = { key, at: now };
+    fn();
+}
+
 // ============ 状态推送（C# → JS） ============
 const StateBridge = {
     listeners: {},
@@ -973,13 +985,13 @@ document.getElementById('openSettingsBtn').addEventListener('click', openSetting
         if (artistCard) { openArtistDetail(artistCard.dataset.artistId); return; }
 
         const playBtn = e.target.closest('[data-play-album]');
-        if (playBtn) { Bridge.invoke('playAlbum', playBtn.dataset.playAlbum); return; }
+        if (playBtn) { playOnce('playAlbum:' + playBtn.dataset.playAlbum, () => Bridge.invoke('playAlbum', playBtn.dataset.playAlbum)); return; }
 
         const playList = e.target.closest('[data-play-list]');
         if (playList) {
             const listEl = playList.closest('.section').querySelector('.song-list');
             const songs = collectSongs(listEl);
-            if (songs.length) Bridge.invoke('playSongsJson', JSON.stringify(songs), 0);
+            if (songs.length) playOnce('playList:' + songs.map(s => s.id).join(','), () => Bridge.invoke('playSongsJson', JSON.stringify(songs), 0));
             return;
         }
 
@@ -994,13 +1006,13 @@ document.getElementById('openSettingsBtn').addEventListener('click', openSetting
         if (songRow) {
             // 书签行：从书签位置播放
             if (songRow.dataset.bookmarkId) {
-                Bridge.invoke('playBookmark', songRow.dataset.songId || '', 0);
+                playOnce('bookmark:' + songRow.dataset.songId, () => Bridge.invoke('playBookmark', songRow.dataset.songId || '', 0));
                 return;
             }
             const listEl = songRow.closest('.song-list');
             const songs = collectSongs(listEl);
             const start = songs.findIndex(s => s.id === songRow.dataset.id);
-            if (songs.length) Bridge.invoke('playSongsJson', JSON.stringify(songs), Math.max(0, start));
+            if (songs.length) playOnce('song:' + songRow.dataset.id, () => Bridge.invoke('playSongsJson', JSON.stringify(songs), Math.max(0, start)));
         }
     });
 }
@@ -1336,7 +1348,8 @@ async function renderQueue() {
         </div>`).join('');
     body.querySelectorAll('.queue-item').forEach(item => {
         item.addEventListener('click', () => {
-            Bridge.invoke('playFromQueue', parseInt(item.dataset.qidx));
+            const qidx = parseInt(item.dataset.qidx);
+            playOnce('queue:' + qidx, () => Bridge.invoke('playFromQueue', qidx));
         });
     });
 

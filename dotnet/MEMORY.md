@@ -59,6 +59,10 @@
 
 9. **配置页密码明文**：`GetServices` 不返回明文密码（只给 `hasPassword` 布尔），编辑时密码留空=不修改。
 
+10. **播放列表水平滚动条**：`queue-item` 的标题/艺术家被塞进无类名的中间 `<div>`（grid 子项），该 div 默认 `min-width:auto` 会按 `nowrap` 文本撑宽 `1fr` 轨道 → 行宽超出 340px 面板出现横向滚动。**修复：`.queue-item > div { min-width:0; overflow:hidden; }`**，并给 `.content`/`.queue-body` 加 `overflow-x:hidden`。教训：grid 里作为子项的「文本包裹层」必须 `min-width:0`（对比 `song-row` 每列自带 overflow:hidden 所以不溢出）。
+
+11. **双击播放 ×2**：播放动作绑在 `click` 上，而鼠标双击会触发两次 `click` → 同一首连续加载两次。**修复：`playOnce(key,fn)` 400ms 去重**（同一 key 窗口内只执行一次），包裹所有 `click` 播放入口（song-row / album 播放按钮 / 章节 play-all / 书签 / 队列项）。注意 Windows 系统双击判定默认上限 ~500ms，去重窗口取 400ms 才可靠。
+
 ## 发现页设计（重要）
 
 - 顶部两个 **tab**：随机推荐 / 智能推荐，共用一个位置
