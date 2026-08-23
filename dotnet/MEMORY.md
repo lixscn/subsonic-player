@@ -142,6 +142,15 @@
   - Core 现只有 `SongItemViewModel` + `ViewModelBase` 两个 VM；`SongItemViewModel.Cover` 为 `byte[]?`。
   - 跨平台 `/` Windows / Core 均编译通过。
 
+## 近期改动（2026-08 一轮）
+
+- **CI（GitHub Actions）**：`.github/workflows/build.yml`，`push(main)/PR` 真机编译三平台（win-x64/linux-x64/osx-x64），`push tags:v*` 触发 **GitHub Release 自动发版**（挂载三平台 zip）。
+  - 每 OS 显式 `restore/build/publish -r <rid>`：Restore 用 `-p:TargetFramework=<tfm>` 限定当前 TFM，避免 Linux/macOS 还原 Cef 的 `net10.0-windows` 专属 TFM（会失败）。
+  - **macOS 关键坑**：runner 是 **arm64**，默认 RID=osx-arm64 会找不到 CEF 原生 `libEGL/libGLESv2/libvk_swiftshader`（MSB3030）。项目 BASS/CEF 原生为 **x64**，故 macOS 必须 **`-r osx-x64`**（arm 上跑需 Rosetta 2）。
+  - `publish --self-contained` 三平台已跑通；违规提示 `NU1903 SQLitePCLRaw 高危漏洞`（可后续升级 Microsoft.Data.Sqlite 消除）。
+
+- **跨平台编译门禁**：本次 CI 抓出的真 macOS/多 TFM 问题均已修复（见上）。目的：Windows 交叉发布无法代替真机编译。
+
 ## 来源项目
 
 播放器服务的音乐库/Subsonic 服务托管在自建 NAS。

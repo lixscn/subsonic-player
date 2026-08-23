@@ -1,20 +1,19 @@
 name: Build
 
-# CI 真机 workflow：每次 push / PR 在真实目标 OS 上编译并发布，验证跨平台代码。
-# 用矩阵（matrix）分别在 Windows / Ubuntu / macOS 官方 runner 上跑。
+# CI：每次 push/PR 在真实目标 OS 上编译+发布验证；打 v* tag 时自动发版（GitHub Release）。
 #
 # 关键点：
-#   - 每 OS 显式 restore/build（含 RID）：Restore 用 -p:TargetFramework=<tfm> 限定当前 TFM，
-#     避免 Linux/macOS 去还原 Cef 的 net10.0-windows 专属 TFM；macOS 因 runner 是 arm64 而
-#     BASS/CEF 原生为 x64，必须 -r osx-x64（默认 RID=osx-arm64 会找不到 libEGL/libGLESv2 等）。
-#   - Publish self-contained 对 CefGlue 跨平台打包在 CI 上尚不稳定，设 continue-on-error；
-#     正式发布包仍走本地 dotnet/publish.ps1。
+#   - 每 OS 显式 restore/build/publish（含 RID）：Restore 用 -p:TargetFramework=<tfm> 限定当前 TFM，
+#     避免 Linux/macOS 去还原 Cef 的 net10.0-windows 专属 TFM；macOS 因 runner 是 arm64 而 BASS/CEF 原生
+#     为 x64，必须 -r osx-x64（默认 RID=osx-arm64 找不到 libEGL/libGLESv2/libvk_swiftshader）。
+#   - Publish --self-contained 在三个平台均已跑通；正式发布包（zip）随 artifact 上传，tag 时挂到 release。
 #
 # 说明：Android（SubsonicPlayer.Mobile）为 P6 占位工程未接入；settings.json 未提交仓库。
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -29,23 +28,19 @@ jobs:
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj
             build: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0-windows10.0.19041.0 --no-restore -nologo
             publish: dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained true --no-restore -nologo
-            continue: false
           - os: ubuntu-latest
             tfm: net10.0
             rid: linux-x64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=net10.0 -r linux-x64
             build: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0 -r linux-x64 --no-restore -nologo
             publish: dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release -f net10.0 -r linux-x64 --self-contained true --no-restore -nologo
-            continue: false
           - os: macos-latest
             tfm: net10.0
             rid: osx-x64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -p:TargetFramework=net10.0 -r osx-x64
             build: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0 -r osx-x64 --no-restore -nologo
             publish: dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release -f net10.0 -r osx-x64 --self-contained true --no-restore -nologo
-            continue: false
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.continue }}
     steps:
       - uses: actions/checkout@v4
 
@@ -61,17 +56,45 @@ jobs:
         working-directory: dotnet
         run: ${{ matrix.build }}
 
-      - name: Publish self-contained (best effort)
-        continue-on-error: true
+      - name: Publish self-contained
         working-directory: dotnet
         run: ${{ matrix.publish }}
 
+      - name: Package zip
+        working-directory: dotnet
+        run: |
+          src="bin/Release/${{ matrix.tfm }}/${{ matrix.rid }}"
+          zf="$GITHUB_WORKSPACE/SubsonicPlayer-${{ matrix.rid }}.zip"
+          if [ -d "$src" ]; then
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              (cd "$src" && pwsh -NoProfile -Command "Compress-Archive -Path ./* -DestinationPath '$zf' -Force")
+            else
+              (cd "$src" && zip -qr "$zf" .)
+            fi
+            echo "packaged $zf"
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: SubsonicPlayer-${{ matrix.rid }}
-          path: |
-            dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/${{ matrix.rid }}/
-            dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/CefGlueBrowserProcess/
-          if-no-files-found: ignore
+          path: SubsonicPlayer-${{ matrix.rid }}.zip
+          if-no-files-found: error
+
+  release:
+    # 仅在打 v* tag 时触发，等 build 矩阵完成后创建 GitHub Release 并挂载三平台 zip。
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: SubsonicPlayer-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/SubsonicPlayer-*.zip
