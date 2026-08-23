@@ -14,6 +14,7 @@ public static class MusicServiceFactory
         {
             MusicServiceType.Emby => new EmbyMusicService(config),
             MusicServiceType.Plex => new PlexMusicService(config),
+            MusicServiceType.AudioStation => new AudioStationMusicService(config),
             _ => new SubsonicMusicService(config),
         };
     }

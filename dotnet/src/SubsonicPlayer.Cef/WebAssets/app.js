@@ -813,6 +813,7 @@ const playerBar = {
     fav: document.getElementById('pbFav'),
     modeBtn: document.getElementById('btnMode'),
     volume: document.getElementById('volumeSlider'),
+    volumeVal: document.getElementById('volumeVal'),
     npTitle: document.getElementById('npTitle'),
     npArtist: document.getElementById('npArtist'),
     npCover: document.getElementById('npCover'),};
@@ -834,7 +835,7 @@ function updatePlayerBar(s) {
     playerBar.fav.classList.toggle('active', !!s.isFavorite);
     const favUse = document.querySelector('#pbFavIcon use');
     if (favUse) favUse.setAttribute('href', s.isFavorite ? '#i-heart' : '#i-heart-outline');
-    if (typeof s.volume === 'number') playerBar.volume.value = s.volume;
+    if (typeof s.volume === 'number') { playerBar.volume.value = s.volume; playerBar.volumeVal.textContent = Math.round(s.volume * 100) + '%'; }
     // 模式图标
     const modeUse = document.querySelector('#modeIcon use');
     if (modeUse) {
@@ -852,6 +853,8 @@ function updatePlayerBar(s) {
         if (fb) fb.style.display = 'none';
         playerBar.cover.src = s.coverUrl;
         if (playerBar.npCover) playerBar.npCover.src = s.coverUrl;
+        const bg = document.getElementById('bgImg');
+        if (bg) bg.src = s.coverUrl;   // 动态封面底图跟随当前曲目
     } else if (!s.coverUrl) {
         // 始终处理无封面（含首次）
         _lastCoverUrl = null;
@@ -863,6 +866,7 @@ function updatePlayerBar(s) {
     }
     markCurrentSong();
     updateQueueHighlight();
+    updateLyricHighlight();
     if (currentPage === 'nowPlaying') {
         const songKey = (s.currentSongId || '') + '|' + (s.coverUrl || '');
         if (songKey !== _lastNowPlayingKey) {
@@ -887,7 +891,9 @@ function initEvents() {
     playerBar.fav.addEventListener('click', () => Bridge.invoke('toggleFavorite'));
 
     playerBar.volume.addEventListener('input', () => {
-        Bridge.invoke('setVolume', parseFloat(playerBar.volume.value));
+        const v = parseFloat(playerBar.volume.value);
+        playerBar.volumeVal.textContent = Math.round(v * 100) + '%';
+        Bridge.invoke('setVolume', v);
     });
     playerBar.modeBtn.addEventListener('click', () => Bridge.invoke('togglePlayMode'));
 
@@ -914,7 +920,7 @@ function initEvents() {
         if (sidePanelOpen && sidePanelMode === 'sleep') closeSidePanel();
         else toggleSleepMenu();
     });
-    document.getElementById('btnMini').addEventListener('click', () => navigate('nowPlaying'));
+    document.getElementById('btnMini').addEventListener('click', () => Bridge.invoke('openMiniPlayer'));
 
 document.getElementById('topThemeBtn').addEventListener('click', () => Bridge.invoke('toggleTheme'));
 document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
@@ -1389,8 +1395,29 @@ async function renderLyrics() {
     if (data.isSynced && data.lines?.length) {
         body.innerHTML = `<div class="lyrics-view">${data.lines.map(l => `
             <div class="lyric-line" data-start="${l.start}">${esc(l.text)}</div>`).join('')}</div>`;
+        updateLyricHighlight();
     } else {
         body.innerHTML = `<div class="lyrics-view"><div class="lyric-plain">${esc(data.text || '暂无歌词')}</div></div>`;
+    }
+}
+
+/// 卡拉 OK 歌词：根据播放进度高亮当前行并滚动到面板中央。
+function updateLyricHighlight() {
+    if (!sidePanelOpen || sidePanelMode !== 'lyrics') return;
+    const body = document.getElementById('queueBody');
+    const lines = body.querySelectorAll('.lyric-line');
+    if (!lines.length) return;
+    const pos = (latestPlayback && latestPlayback.positionSeconds) || 0;
+    let cur = 0;
+    for (let i = 0; i < lines.length; i++) {
+        if (parseFloat(lines[i].dataset.start) <= pos) cur = i;
+        else break;
+    }
+    lines.forEach((el, i) => el.classList.toggle('current', i === cur));
+    const currentEl = lines[cur];
+    if (currentEl) {
+        const target = currentEl.offsetTop - (body.clientHeight - currentEl.offsetHeight) / 2;
+        body.scrollTop = Math.max(0, target);
     }
 }
 

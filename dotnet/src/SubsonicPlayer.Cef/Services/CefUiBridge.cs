@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using SubsonicPlayer.Models;
 using SubsonicPlayer.ViewModels;
+using SubsonicPlayer.Views;
 using Xilium.CefGlue.Avalonia;
 
 namespace SubsonicPlayer.Services;
@@ -19,6 +20,7 @@ public sealed class CefUiBridge : IDisposable
 {
     private AvaloniaCefBrowser? _browser;
     private Window? _window;
+    private MiniPlayerWindow? _miniWindow;
     private readonly List<Action> _subscriptions = new();
 
     /// <summary>页面数据提供者（暴露为 bridge.data，JS 直接调用取数据）。</summary>
@@ -455,6 +457,29 @@ public sealed class CefUiBridge : IDisposable
         {
             if (Application.Current is App app)
                 app.Exit();
+        });
+    }
+
+    /// <summary>打开迷你播放器浮窗：收起主窗口，关闭小窗时恢复主窗口。</summary>
+    public void OpenMiniPlayer()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_miniWindow is null)
+            {
+                _miniWindow = new MiniPlayerWindow();
+                _miniWindow.Closed += (_, _) =>
+                {
+                    _miniWindow = null;
+                    if (_window is not null)
+                    {
+                        _window.Show();
+                        _window.Activate();
+                    }
+                };
+            }
+            _window?.Hide();
+            _miniWindow.Show();
         });
     }
 

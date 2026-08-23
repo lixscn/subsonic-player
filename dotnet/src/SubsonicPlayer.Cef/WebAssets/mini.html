@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; overflow:hidden; background:#17171B; color:#F5F5F7;
+  font-family:"Inter","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-user-select:none; user-select:none; }
+body { display:flex; flex-direction:column; height:100vh; }
+
+/* 顶部拖拽条 */
+.mp-top { display:flex; align-items:center; padding:5px 8px; gap:6px; -webkit-app-region:no-drag; }
+.mp-title { flex:1; text-align:center; font-size:11.5px; color:#A1A1AA; }
+.mp-btn { border:none; background:transparent; color:#A1A1AA; cursor:pointer;
+  width:22px; height:22px; font-size:13px; line-height:1; border-radius:4px; -webkit-app-region:no-drag; }
+.mp-btn:hover { color:#F5F5F7; background:#26262E; }
+
+/* 主体：封套 + 信息 + 控制 */
+.mp-body { flex:1; display:flex; align-items:center; gap:12px; padding:2px 12px 10px; min-height:0; }
+.mp-cover { width:56px; height:56px; border-radius:8px; object-fit:cover; background:#1E1E24; flex:none; }
+.mp-cover-fb { width:56px; height:56px; border-radius:8px; background:#1E1E24; flex:none;
+  display:flex; align-items:center; justify-content:center; color:#6B6B76; }
+.mp-cover-fb svg { fill:currentColor; }
+.mp-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+.mp-song { font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mp-artist { font-size:11px; color:#A1A1AA; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mp-controls { display:flex; align-items:center; gap:3px; -webkit-app-region:no-drag; }
+.mp-ctl { border:none; background:transparent; color:#F5F5F7; cursor:pointer;
+  width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px; }
+.mp-ctl:hover { background:#26262E; }
+.mp-ctl svg { fill:currentColor; }
+.mp-ctl.main svg { width:20px; height:20px; }
+.mp-prog { flex:1; height:3px; background:#2E2E38; border-radius:2px; position:relative; cursor:pointer; }
+.mp-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#22C55E; border-radius:2px; }
+.mp-time { font-size:10px; color:#6B6B76; min-width:34px; text-align:right; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+  <div class="mp-top" id="mpTop">
+    <button class="mp-btn" id="mpMin" title="关闭迷你播放器">✕</button>
+    <span class="mp-title" id="mpTitle">迷你播放器</span>
+    <button class="mp-btn" id="mpExpand" title="展开主窗口">⤢</button>
+  </div>
+  <div class="mp-body">
+    <img class="mp-cover" id="mpCover" style="display:none" alt="">
+    <div class="mp-cover-fb" id="mpCoverFb"><svg width="22" height="22"><use href="#i-album"/></svg></div>
+    <div class="mp-main">
+      <div class="mp-song" id="mpSong">未在播放</div>
+      <div class="mp-artist" id="mpArtist"></div>
+      <div class="mp-controls">
+        <button class="mp-ctl" id="mpPrev" title="上一首"><svg width="16" height="16"><use href="#i-prev"/></svg></button>
+        <button class="mp-ctl main" id="mpPlay" title="播放/暂停"><svg id="mpPlayIcon" width="18" height="18"><use href="#i-play"/></svg></button>
+        <button class="mp-ctl" id="mpNext" title="下一首"><svg width="16" height="16"><use href="#i-next"/></svg></button>
+        <div class="mp-prog" id="mpProg"><div class="mp-fill" id="mpFill"></div></div>
+        <span class="mp-time" id="mpTime">0:00</span>
+      </div>
+    </div>
+  </div>
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z"/></symbol>
+      <symbol id="i-album" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm0-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0-7a6 6 0 0 0-6 6h2a4 4 0 0 1 4-4V6z"/></symbol>
+    </defs>
+  </svg>
+<script>
+const $ = id => document.getElementById(id);
+function fmt(t){ if(!t||t<0) return '0:00'; const s=Math.floor(t%60), m=Math.floor(t/60); return m+':'+String(s).padStart(2,'0'); }
+function upd(s){
+  if(!s) return;
+  $('mpSong').textContent = s.currentTitle || '未在播放';
+  $('mpArtist').textContent = s.currentArtist || '';
+  const pu = document.querySelector('#mpPlayIcon use');
+  if (pu) pu.setAttribute('href', s.isPlaying ? '#i-pause' : '#i-play');
+  const pct = s.durationSeconds > 0 ? Math.min(100, (s.positionSeconds / s.durationSeconds) * 100) : 0;
+  $('mpFill').style.width = pct + '%';
+  $('mpTime').textContent = fmt(s.positionSeconds);
+  if (s.coverUrl) {
+    $('mpCover').src = s.coverUrl;
+    $('mpCover').style.display = '';
+    $('mpCoverFb').style.display = 'none';
+  } else {
+    $('mpCover').style.display = 'none';
+    $('mpCoverFb').style.display = 'flex';
+  }
+}
+window.addEventListener('bridgeEvent', e => {
+  const d = e.detail || {};
+  if (d.event === 'playback') upd(d.payload);
+});
+
+$('mpPlay').addEventListener('click', () => window.bridge.togglePlay());
+$('mpPrev').addEventListener('click', () => window.bridge.previous());
+$('mpNext').addEventListener('click', () => window.bridge.next());
+$('mpProg').addEventListener('click', e => {
+  const r = $('mpProg').getBoundingClientRect();
+  window.bridge.seek((e.clientX - r.left) / r.width);
+});
+$('mpMin').addEventListener('click', () => window.bridge.closeMini());
+$('mpExpand').addEventListener('click', () => window.bridge.closeMini());
+// 顶部拖拽条：mousedown 交给 C# 窗口拖动（Win32 / BeginMoveDrag）
+$('mpTop').addEventListener('mousedown', e => {
+  if (e.target.closest('button')) return;
+  if (e.button === 0) window.bridge.startWindowDrag();
+});
+// 拉起初始状态（避免状态推送早于监听注册而丢失）
+window.bridge.getState().then(upd).catch(() => {});
+</script>
+</body>
+</html>

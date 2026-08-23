@@ -7,9 +7,12 @@ using SubsonicPlayer.Models;
 namespace SubsonicPlayer.Services;
 
 /// <summary>
-/// 智能推荐：基于用户「收藏偏好 + 播放历史权重」推荐尚未收藏的歌曲。
-/// 算法：收藏歌曲统计 Top 艺术家 + 最近播放历史统计高频艺术家（合并去重）→ 拉取其专辑收集未收藏曲目 →
-/// 混入随机歌曲补充多样性 → 去重随机取样。
+/// 智能推荐：基于「收藏偏好 + 播放历史权重 + 流派相似度」推荐尚未收藏的歌曲。
+/// 算法：收藏歌曲与最近播放合并成一个艺术家评分（收藏权重 2、历史权重 1）→ 取 Top 艺术家专辑收集
+/// 未收藏曲目（每艺术家配额上限，保多样性）→ 混入随机歌曲补充 → 按流派亲和（收藏热门流派）重排 +
+/// 随机取样。
+/// 说明：getSimilarSongs2 / getSongsByGenre 需跨协议扩展 IMusicService（Gonic 的 OpenSubsonic 支持
+/// 不确定，Emby/Plex 各不同），该项暂用客户端侧「流派亲和」实现，未引入协议调用。
 /// </summary>
 public static class RecommendationService
 {
@@ -30,53 +33,70 @@ public static class RecommendationService
 
             var favoriteIds = new HashSet<string>(favoriteSongs.Select(s => s.Id), StringComparer.Ordinal);
 
-            // 2. 收藏偏好：最常收藏的艺术家 Top 3
-            var topArtistIds = favoriteSongs
-                .Where(s => !string.IsNullOrEmpty(s.ArtistId))
-                .GroupBy(s => s.ArtistId)
-                .OrderByDescending(g => g.Count())
-                .Take(3)
-                .Select(g => g.Key)
-                .ToList();
-
-            // 2.1 播放历史权重：最近播放歌曲中的高频艺术家 Top 3（弥补纯收藏样本不足）
-            var recentArtistIds = AppServices.Library.GetRecentSongs(100)
-                .Where(s => !string.IsNullOrEmpty(s.ArtistId))
-                .GroupBy(s => s.ArtistId)
-                .OrderByDescending(g => g.Count())
-                .Take(3)
-                .Select(g => g.Key);
-
-            var targetArtistIds = topArtistIds
-                .Concat(recentArtistIds)
-                .Distinct(StringComparer.Ordinal)
-                .Take(5)
-                .ToList();
-
-            // 3. 对每个目标艺术家，随机挑专辑收集未收藏歌曲
-            var candidates = new List<Song>();
-            foreach (var artistId in targetArtistIds)
+            // 2. 艺术家评分：收藏权重 2、播放历史权重 1（弥补纯收藏样本不足）
+            var artistScore = new Dictionary<string, double>(StringComparer.Ordinal);
+            void AddArtist(Song s, double w)
             {
+                if (string.IsNullOrEmpty(s.ArtistId))
+                    return;
+                artistScore[s.ArtistId] = artistScore.GetValueOrDefault(s.ArtistId) + w;
+            }
+            foreach (var s in favoriteSongs) AddArtist(s, 2.0);
+            foreach (var s in AppServices.Library.GetRecentSongs(100)) AddArtist(s, 1.0);
+
+            var targetArtists = artistScore
+                .OrderByDescending(kv => kv.Value)
+                .Take(6)
+                .Select(kv => kv.Key)
+                .ToList();
+
+            // 3. 收藏热门流派（流派相似度亲和集合）
+            var favGenres = favoriteSongs
+                .Where(s => !string.IsNullOrEmpty(s.Genre))
+                .GroupBy(s => s.Genre, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count())
+                .Take(4)
+                .Select(g => g.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // 4. 搜集候选：目标艺术家专辑的未收藏曲目（每艺术家配额上限，保多样性）
+            var candidates = new List<Song>();
+            var perArtist = new Dictionary<string, int>(StringComparer.Ordinal);
+            const int perArtistCap = 8;
+            foreach (var artistId in targetArtists)
+            {
+                if (perArtist.GetValueOrDefault(artistId) >= perArtistCap)
+                    continue;
                 var albums = await music.GetArtistAlbumsAsync(artistId);
                 foreach (var album in albums.OrderBy(_ => Guid.NewGuid()).Take(2))
                 {
                     var albumDetail = await music.GetAlbumAsync(album.Id);
                     if (albumDetail is null)
                         continue;
-                    candidates.AddRange(albumDetail.Songs.Where(s => !favoriteIds.Contains(s.Id)));
+                    foreach (var s in albumDetail.Songs)
+                    {
+                        if (favoriteIds.Contains(s.Id))
+                            continue;
+                        candidates.Add(s);
+                        perArtist[artistId] = perArtist.GetValueOrDefault(artistId) + 1;
+                        if (perArtist[artistId] >= perArtistCap)
+                            break;
+                    }
                 }
             }
 
-            // 4. 混入随机歌曲，补充偏好外的多样性
-            var randomSongs = await music.GetRandomSongsAsync(count);
-            candidates.AddRange(randomSongs.Where(s => !favoriteIds.Contains(s.Id)));
+            // 5. 混入随机歌曲，补充偏好外多样性
+            candidates.AddRange((await music.GetRandomSongsAsync(count)).Where(s => !favoriteIds.Contains(s.Id)));
 
-            // 5. 去重 + 随机取 count
+            // 6. 去重 + 流派亲和加分排序（偏好流派靠前）+ 层内随机 + 取 count
             return candidates
                 .GroupBy(s => s.Id)
                 .Select(g => g.First())
-                .OrderBy(_ => Guid.NewGuid())
+                .Select(s => new { Song = s, Affinity = s.Genre != null && favGenres.Contains(s.Genre) ? 1 : 0 })
+                .OrderByDescending(x => x.Affinity)   // 流派亲和者优先
+                .ThenBy(_ => Guid.NewGuid())           // 同层内随机
                 .Take(count)
+                .Select(x => x.Song)
                 .ToList();
         }
         catch

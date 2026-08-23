@@ -143,13 +143,22 @@ public sealed class SmtcService : IMediaIntegration
 
         try
         {
-            using var ms = new MemoryStream();
-            bmp.Save(ms);
-            ms.Position = 0;
+            // 用 InMemoryRandomAccessStream 承载数据：SMTC 是异步读缩略图，
+            // 若用 using 的 MemoryStream 转流，方法结束即被释放，缩略图可能读不到。
+            var stream = new InMemoryRandomAccessStream();
+            using (var ms = new MemoryStream())
+            {
+                bmp.Save(ms);
+                ms.Position = 0;
+                using (var outStream = stream.AsStreamForWrite())
+                {
+                    ms.CopyTo(outStream);
+                }
+            }
+            stream.Seek(0);
 
-            var ras = ms.AsRandomAccessStream();
             var updater = _controls.DisplayUpdater;
-            updater.Thumbnail = RandomAccessStreamReference.CreateFromStream(ras);
+            updater.Thumbnail = RandomAccessStreamReference.CreateFromStream(stream);
             updater.Update();
         }
         catch

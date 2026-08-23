@@ -568,5 +568,6 @@ public class SubsonicClient
         Suffix = A(el, "suffix"),
         BitRate = Ai(el, "bitRate"),
         ContentType = A(el, "contentType"),
+        Genre = A(el, "genre"),
     };
 }

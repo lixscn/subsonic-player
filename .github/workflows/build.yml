@@ -1,0 +1,62 @@
+name: Build
+
+# CI 真机 workflow：每次 push / PR 在真实目标 OS 上编译并发布，验证跨平台代码。
+# 用矩阵（matrix）分别在 Windows / Ubuntu / macOS 官方 runner 上跑，
+# 而不是在 Windows 上「交叉发布」——从而能在真机上抓出：
+#   #if WINDOWS 漏网、Linux/macOS 专属 API、BASS .so/.dylib、CEF 非 Windows 原生库等问题。
+#
+# 说明：
+#   - Android（SubsonicPlayer.Mobile）目前是 P6 占位工程，尚未接入（无 App 入口/Activity），
+#     待移动端立项后再独立加 job（dotnet publish -f net10.0-android + 模拟器）。
+#   - CI 编译器带账号信息，公共 runner 不会泄露任何凭据；settings.json 未提交仓库。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            tfm: net10.0-windows10.0.19041.0
+            rid: win-x64
+          - os: ubuntu-latest
+            tfm: net10.0
+            rid: linux-x64
+          - os: macos-latest
+            tfm: net10.0
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        working-directory: dotnet
+        run: dotnet restore
+
+      - name: Build (compile gate)
+        working-directory: dotnet
+        run: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f ${{ matrix.tfm }} --no-restore -nologo
+
+      - name: Publish self-contained
+        working-directory: dotnet
+        run: |
+          dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release \
+            -f ${{ matrix.tfm }} -r ${{ matrix.rid }} --self-contained true --no-restore -nologo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SubsonicPlayer-${{ matrix.rid }}
+          path: |
+            dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/${{ matrix.rid }}/
+            dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/CefGlueBrowserProcess/
+          if-no-files-found: ignore

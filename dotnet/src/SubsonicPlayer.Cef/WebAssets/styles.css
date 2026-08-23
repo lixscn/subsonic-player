@@ -13,6 +13,7 @@
     --accent-text: #5EEAD4;
     --accent-dim: #15803D;
     --overlay: rgba(10, 10, 12, 0.65);
+    --bg-main-glass: rgba(10, 10, 12, 0.66);   /* 主内容区半透明，透出动态封面底图 */
     --sidebar-w: 200px;
     --topbar-h: 56px;
     --playerbar-h: 88px;
@@ -36,6 +37,7 @@ html.light {
     --accent-text: #0B6B4F;               /* 深青绿文字，浅底上清晰 */
     --accent-dim: #0E7490;
     --overlay: rgba(245, 245, 247, 0.65);
+    --bg-main-glass: rgba(245, 245, 247, 0.7);
     background: var(--bg-app);   /* 浅色下 html 背景也纯色，避免右侧透出渐变阴影 */
 }
 
@@ -63,6 +65,30 @@ html.light body {
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* ============ 动态封面底图 ============ */
+.bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+}
+.bg-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.15);
+    filter: blur(46px) saturate(1.25);
+    opacity: 0.45;
+    transition: opacity 0.4s ease;
+}
+.bg-layer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(10, 10, 12, 0.62), rgba(10, 10, 12, 0.84));
+}
+
 .app-shell {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr;
@@ -87,7 +113,7 @@ html.light body {
         "content";
     min-height: 0;
     overflow: hidden;
-    background: var(--bg-app);  /* 铺满背景，避免内容溢出露白 */
+    background: var(--bg-main-glass);  /* 半透明，透出动态封面底图 */
 }
 .sidebar {
     grid-area: sidebar;
@@ -277,7 +303,7 @@ html.light body {
     grid-area: content;
     overflow-y: auto;
     overflow-x: hidden;   /* 内容区只允许纵向滚动，杜绝水平滚动条 */
-    background: var(--bg-app);
+    background: transparent;
     position: relative;
     min-height: 0;   /* 允许 grid 内收缩，保证滚动生效 */
 }
@@ -456,6 +482,17 @@ html.light body {
     height: 4px;
 }
 
+.volume-val {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    margin-left: 2px;
+    padding-right: 2px;
+    -webkit-app-region: no-drag;
+}
+
 /* ============ 播放队列侧面板 ============ */
 .queue-panel {
     position: fixed;
@@ -506,16 +543,24 @@ html.light body {
    min-width:0 允许收缩 + overflow:hidden 让内部 ellipsis 生效。 */
 .queue-item > div { min-width: 0; overflow: hidden; }
 
-/* 歌词 */
-.lyrics-view { padding: 8px 4px; display: flex; flex-direction: column; gap: 10px; }
+/* 歌词（卡拉 OK 式：当前行放大高亮 + 前后行渐隐 + 滚动居中） */
+.lyrics-view { padding: 16px 8px; display: flex; flex-direction: column; gap: 6px; }
 .lyric-line {
     font-size: 13px;
     color: var(--text-secondary);
-    padding: 4px 8px;
+    padding: 5px 10px;
     border-radius: 6px;
-    transition: color 0.15s;
+    text-align: center;
+    opacity: 0.5;
+    transition: color 0.25s, font-size 0.25s, opacity 0.25s, transform 0.25s;
 }
-.lyric-line.current { color: var(--accent-text); font-weight: 600; }
+.lyric-line.current {
+    color: var(--accent-text);
+    font-weight: 600;
+    font-size: 15px;
+    opacity: 1;
+    transform: scale(1.03);
+}
 .lyric-plain { font-size: 13.5px; color: var(--text-secondary); line-height: 1.9; white-space: pre-wrap; }
 
 /* ============ 专业均衡器 ============ */

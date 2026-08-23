@@ -15,4 +15,5 @@ public class Song
     public string Suffix { get; set; } = "";
     public int BitRate { get; set; }
     public string ContentType { get; set; } = "";
+    public string Genre { get; set; } = "";
 }

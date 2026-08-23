@@ -16,6 +16,7 @@ public enum MusicServiceType
     Gonic,
     Emby,
     Plex,
+    AudioStation,
 }
 
 public class MusicServiceConfig
@@ -43,6 +44,7 @@ public class MusicServiceConfig
         MusicServiceType.Gonic => "Gonic",
         MusicServiceType.Emby => "Emby",
         MusicServiceType.Plex => "Plex",
+        MusicServiceType.AudioStation => "AudioStation",
         _ => "Subsonic",
     };
 

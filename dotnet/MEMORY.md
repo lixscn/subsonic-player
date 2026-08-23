@@ -10,6 +10,8 @@
 
 .NET 10 + Avalonia 11.3.20 + Semi.Avalonia 11.3.14 + CommunityToolkit.Mvvm + SQLite；音频引擎 BASS + BASS_FX；**UI 为 HTML（Chromium 120 via CefGlue.Avalonia 120.6099.211，OSR 渲染）**。
 
+> 版本统一决策：`Core`/`Cef` 用 Avalonia 11.3.20 + Semi 11.3.14；`Mobile` 原为 12.0.3，已**对齐到 11.3.20**（Avalonia 11.3.20 支持 Android/iOS），避免 Mobile 引用 Core 时的 Avalonia 版本冲突。Core 仍与 Avalonia 强耦合（`IImage`/`IBrush`/`DispatcherTimer` 等），彻底解耦是大重构，暂缓。
+
 ## 项目结构（dotnet/）
 
 - `src/SubsonicPlayer.Core`：共享逻辑（BASS 音频引擎、PlaybackService、AppServices、Subsonic/Emby/Plex 客户端、歌词搜索）
@@ -112,7 +114,7 @@
 
 ## 多服务支持
 
-- 协议：Subsonic 族（Subsonic/Navidrome/Jellyfin/Gonic）+ Emby + Plex 已实现；AudioStation 规划中
+- 协议：Subsonic 族（Subsonic/Navidrome/Jellyfin/Gonic）+ Emby + Plex 已实现；AudioStation 已接入（认证+URL 完成，浏览待真机验证）
 - 扩展点：`MusicServiceFactory.Create` 按 `MusicServiceConfig.Type` 分支
 - 曲库规模：约 2174 艺术家 / 28 个字母索引
 
@@ -120,6 +122,16 @@
 
 - 所有列表/网格行 Grid 列宽**必须固定宽度**，**禁止 `*` 自适应列宽**（标题伸缩导致右侧列错位，用户多次反馈）
 - 容器窄（如 320 面板）时缩小固定列宽而非改用 `*`
+
+## 近期改动（2026-08 一轮）
+
+- **Song 模型加 `Genre` 字段**：`SubsonicClient.ParseSong` 读 `genre`（Emby/Plex 默认空）。智能推荐据此做**流派亲和重排**（收藏热门流派靠前）。
+- **智能推荐增强**：`RecommendationService` 用「收藏权重2 + 历史权重1」艺术家评分、每艺术家配额（保多样）、流派亲和排序。`getSimilarSongs2`/`getGenres` 需跨协议扩展 `IMusicService`，未引入（Gonic 的 OS 支持不确定）。
+- **KTV 歌词**：侧面板歌词 `.lyric-line` 卡拉OK式（当前行放大高亮 + 前后行渐隐），`updateLyricHighlight` 按 `data-start` 高亮并滚动居中；播放进度更新时触发。
+- **动态封面底图**：`index.html` 加 `.bg-layer`（封面 blur46 + 深色遮罩），主内容区 `--bg-main-glass` 半透明透出；播放时 `bgImg.src` 同步当前封面。深浅主题各一套玻璃色。
+- **SMTC 缩略图**：`SmtcService.UpdateCover` 改用 `InMemoryRandomAccessStream`（原 `using MemoryStream` 转流会在异步读缩略图前被释放，导致缩略图不显示）。
+- **CI workflow**：`.github/workflows/build.yml`，矩阵 win/ubuntu/macos 真机构建 + 发布 + 上传 artifact；Android 因 Mobile 占位暂不接入。
+- **AudioStation（群晖）**：`MusicServiceType.AudioStation` + `AudioStationMusicService`（`MusicServiceBase` 子类）。已实现 SYNO.API.Discover + SYNO.API.Auth 登录拿 sid、封面/播放/下载 URL 构造；**浏览类（artists/albums/search）暂返回空**——字段映射需真实 DSM 验证，待有群晖设备再补全。
 
 ## 来源项目
 
