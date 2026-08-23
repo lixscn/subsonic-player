@@ -15,7 +15,6 @@
 - `src/SubsonicPlayer.Core`：共享逻辑（BASS 音频引擎、PlaybackService、AppServices、Subsonic/Emby/Plex 客户端、歌词搜索）
 - `src/SubsonicPlayer.Cef`：**主力**。HTML UI（WebAssets）+ CefGlue.Avalonia
 - `src/SubsonicPlayer.Desktop`：Avalonia 原版 XAML UI，**已搁置**（不再维护 CEF 界面）
-- `src/CefShadowTest`：空白 CEF 诊断项目（index.html 被破坏为测试状态，未提交 git）
 - `publish.ps1`：全平台发布脚本
 
 ## UI 技术（CEF 迁移，重要）
@@ -35,7 +34,7 @@
 
 ## 已踩大坑（CefGlue + HTML UI）
 
-1. **右侧"边框阴影"= queue-panel 的 box-shadow**：`position:fixed; right:0` 关闭时 `right:-340px` 移出屏幕，但 `box-shadow` 仍向左投射 → 右侧渐变阴影（深色不可见、浅色显形）。排查：CefShadowTest 空白页二分定位。**修复：关闭时 `visibility:hidden`（仅位移不够）**。教训：fixed/absolute + box-shadow 移出视口仍投影，须 visibility:hidden。
+1. **右侧"边框阴影"= queue-panel 的 box-shadow**：`position:fixed; right:0` 关闭时 `right:-340px` 移出屏幕，但 `box-shadow` 仍向左投射 → 右侧渐变阴影（深色不可见、浅色显形）。排查：空白页二分定位（曾用 CefShadowTest 诊断项目，已删除）。**修复：关闭时 `visibility:hidden`（仅位移不够）**。教训：fixed/absolute + box-shadow 移出视口仍投影，须 visibility:hidden。
 
 2. **OSR 物理键盘无法输入（搜索框/设置表单）**：CEF 内部 input 可聚焦，但 **AvaloniaCefBrowser 未持有 Avalonia 键盘焦点** → KeyDown 不路由到 CEF → 物理键盘进不去（CDP 模拟能输入、SendKeys 物理键不行）。**修复：AttachBrowser 监听 PointerPressed，每次点击强制 `_browser.Focusable=true; _browser.Focus()`**。窗口 GotFocus/KeyDown 日志验证链路。
 
