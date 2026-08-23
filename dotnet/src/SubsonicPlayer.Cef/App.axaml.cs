@@ -13,7 +13,6 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using SubsonicPlayer.Services;
-using SubsonicPlayer.ViewModels;
 using SubsonicPlayer.Views;
 
 namespace SubsonicPlayer;
@@ -37,9 +36,6 @@ public partial class App : Application
         ("OverlayBrush", "#7A0E0E11", "#7AF5F5F7"),
     };
 
-    /// <summary>切换深浅色主题（委托给 Core 的 ThemeManager）。</summary>
-    public static void ApplyTheme(bool dark) => ThemeManager.ApplyTheme(dark);
-
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -61,10 +57,7 @@ public partial class App : Application
             InjectPlatformServices();
             AppServices.Initialize();
 
-            var window = new MainWindow
-            {
-                DataContext = new MainWindowViewModel(),
-            };
+            var window = new MainWindow();
             desktop.MainWindow = window;
 
             SetupTray(window);
