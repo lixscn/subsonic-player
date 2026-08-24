@@ -20,7 +20,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         // 窗口图标：Windows 用 ico，macOS/Linux 用 png
         Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri(
-            $"avares://SubsonicPlayerCef/Assets/avalonia-logo.{(OperatingSystem.IsWindows() ? "ico" : "png")}")));
+            $"avares://SubsonicPlayer/Assets/avalonia-logo.{(OperatingSystem.IsWindows() ? "ico" : "png")}")));
 #if WINDOWS
         Opened += (_, _) => _hotkeys.Register(this);
 #endif

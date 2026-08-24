@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFrameworks>net10.0-windows10.0.19041.0;net10.0</TargetFrameworks>
     <RootNamespace>SubsonicPlayer</RootNamespace>
-    <AssemblyName>SubsonicPlayerCef</AssemblyName>
+    <AssemblyName>SubsonicPlayer</AssemblyName>
     <Nullable>enable</Nullable>
     <ApplicationManifest Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
