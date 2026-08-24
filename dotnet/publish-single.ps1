@@ -29,13 +29,13 @@ Start-Sleep -Seconds 2   # 等待进程释放文件句柄
 if (Test-Path $TargetDir) { Remove-Item $TargetDir -Recurse -Force }
 New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 
-# 托管单文件；CEF/BASS 原生与 WebAssets 外置（不进单文件）
-& dotnet publish $proj -c Release -f $Tfm -r $Rid --self-contained true -o $TargetDir -nologo `
-    -p:PublishSingleFile=true
+# 自包含（非单文件）发布；CEF/BASS 原生、WebAssets 与托管 DLL 均在 exe 旁（可正常运行）。
+# 注意：单文件（PublishSingleFile）会导致 CEF 初始化失败/黑屏，故不用。
+& dotnet publish $proj -c Release -f $Tfm -r $Rid --self-contained true -o $TargetDir -nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（exit=$LASTEXITCODE）" }
 
 $exe = Join-Path $TargetDir 'SubsonicPlayer.exe'
-if (-not (Test-Path $exe)) { throw "未找到单文件 exe：$exe" }
+if (-not (Test-Path $exe)) { throw "未找到 exe：$exe" }
 
 Write-Host "`n完成：$TargetDir\SubsonicPlayer.exe" -ForegroundColor Green
 Write-Host "exe 大小： $([math]::Round((Get-Item $exe).Length/1MB,1)) MB" -ForegroundColor Green

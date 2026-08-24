@@ -1,16 +1,9 @@
-name: Build
+﻿name: Build
 
-# CI：每次 push/PR 在真实目标 OS 上编译+发布验证；打 v* tag 时自动发版（GitHub Release 挂载三平台 zip）。
-#
-# 关键点：
-#   - 每 OS 显式 restore/build/publish 且带 -r <rid>：
-#       Windows 用 `-r win-x64`（裸还原，避免 -p:TargetFramework 传播到 Core）
-#       Linux/macOS 用 `-p:TargetFramework=net10.0 -r <rid>`（限定当前 TFM，避免还原 net10.0-windows 专属 TFM）
-#   - macOS runner 是 arm64，但 BASS/CEF 原生为 x64 → 必须 -r osx-x64，否则找不到 libEGL/libGLESv2/libvk_swiftshader。
-#   - 发布目录（bin/Release/<tfm>/<rid>/）整体作为 artifact 上传；发版 job 下载后统一打成 <rid>.zip。
-#
-# 说明：Android（SubsonicPlayer.Mobile）为 P6 占位工程未接入；settings.json 未提交仓库。
-
+# CI锛氭瘡娆?push/PR 鍦ㄧ湡瀹炵洰鏍?OS 涓婄紪璇?鍙戝竷楠岃瘉锛涙墦 v* tag 鏃惰嚜鍔ㄥ彂鐗堬紙GitHub Release 鎸傝浇涓夊钩鍙?zip锛夈€?#
+# 鍏抽敭鐐癸細
+#   - 姣?OS 鏄惧紡 restore/build/publish 涓斿甫 -r <rid>锛?#       Windows 鐢?`-r win-x64`锛堣８杩樺師锛岄伩鍏?-p:TargetFramework 浼犳挱鍒?Core锛?#       Linux/macOS 鐢?`-p:TargetFramework=net10.0 -r <rid>`锛堥檺瀹氬綋鍓?TFM锛岄伩鍏嶈繕鍘?net10.0-windows 涓撳睘 TFM锛?#   - macOS runner 鏄?arm64锛屼絾 BASS/CEF 鍘熺敓涓?x64 鈫?蹇呴』 -r osx-x64锛屽惁鍒欐壘涓嶅埌 libEGL/libGLESv2/libvk_swiftshader銆?#   - 鍙戝竷鐩綍锛坆in/Release/<tfm>/<rid>/锛夋暣浣撲綔涓?artifact 涓婁紶锛涘彂鐗?job 涓嬭浇鍚庣粺涓€鎵撴垚 <rid>.zip銆?#
+# 璇存槑锛欰ndroid锛圫ubsonicPlayer.Mobile锛変负 P6 鍗犱綅宸ョ▼鏈帴鍏ワ紱settings.json 鏈彁浜や粨搴撱€?
 on:
   push:
     branches: [main]
@@ -28,7 +21,7 @@ jobs:
             rid: win-x64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -r win-x64
             build: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0-windows10.0.19041.0 -r win-x64 --no-restore -nologo
-            publish: dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained true --no-restore -nologo -p:PublishSingleFile=true
+            publish: dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained true --no-restore -nologo
           - os: ubuntu-latest
             tfm: net10.0
             rid: linux-x64
@@ -71,8 +64,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    # 打 v* tag 时触发：等 build 矩阵完成后，把各平台打包成 zip 并创建 GitHub Release。
-    needs: build
+    # 鎵?v* tag 鏃惰Е鍙戯細绛?build 鐭╅樀瀹屾垚鍚庯紝鎶婂悇骞冲彴鎵撳寘鎴?zip 骞跺垱寤?GitHub Release銆?    needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
