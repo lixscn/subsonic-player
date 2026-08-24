@@ -50,8 +50,17 @@ sealed class Program
                         BrowserSubprocessPath = Path.Combine(
                             baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
                     },
-                    // 不额外加 GPU 参数（之前非单文件自包含可正常跑）；避免画蛇添足。
-                    Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
+                    // GPU 进程崩溃（GPU process isn't usable）→ 黑屏/闪退。禁用硬件 GPU + SwiftShader 软件渲染。
+                    // 组合：disable-gpu + disable-gpu-compositing + use-angle=swiftshader + enable-unsafe-swiftshader
+                    // （Chromium 111+ 默认禁 SwiftShader，必须 enable-unsafe-swiftshader 才允许软件 GL）。
+                    new System.Collections.Generic.KeyValuePair<string, string>[]
+                    {
+                        new("disable-gpu", ""),
+                        new("disable-gpu-compositing", ""),
+                        new("disable-gpu-rasterization", ""),
+                        new("use-angle", "swiftshader"),
+                        new("enable-unsafe-swiftshader", ""),
+                    },
                     new[] { AppScheme.Build() });
             });
 
