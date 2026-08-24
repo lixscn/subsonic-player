@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 #  publish-singlefile.ps1 — 托管单文件 + CEF/BASS 原生外置
 #  用法： powershell -ExecutionPolicy Bypass -File publish-singlefile.ps1
 #  说明：
