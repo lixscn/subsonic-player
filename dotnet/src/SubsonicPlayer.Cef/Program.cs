@@ -26,18 +26,53 @@ sealed class Program
 #endif
             .WithInterFont()
             .LogToTrace()
-            .AfterSetup(_ => CefRuntimeLoader.Initialize(
-                new CefSettings
-                {
-                    RootCachePath = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                        "subsonic-player", "cef-cache"),
-                    LogFile = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                        "subsonic-player", "cef.log"),
-                    LogSeverity = CefLogSeverity.Info,
-                    WindowlessRenderingEnabled = true,
-                },
-                Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
-                new[] { AppScheme.Build() }));
+            .AfterSetup(_ =>
+            {
+                // CEF(Chromium) 原生永远不打包进 exe，全部外置为目录里的文件：
+                //   - resources.pak / icudtl.dat / snapshot_blob.bin / chrome_*.pak / libcef.dll 在 exe 旁（ResourcesDirPath）
+                //   - locales\*.pak 在 exe 旁目录（LocalesDirPath，可能是根 locales 或 runtimes\*\native\locales）
+                //   - CefGlueBrowserProcess 子进程
+                // 单文件(托管)模式下自动探测不可靠，这里显式告诉 CEF 去外置目录找。
+                var baseDir = AppContext.BaseDirectory;
+                var localesDir = ResolveLocalesDir(baseDir);
+                CefRuntimeLoader.Initialize(
+                    new CefSettings
+                    {
+                        RootCachePath = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                            "subsonic-player", "cef-cache"),
+                        LogFile = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                            "subsonic-player", "cef.log"),
+                        LogSeverity = CefLogSeverity.Info,
+                        WindowlessRenderingEnabled = true,
+                        ResourcesDirPath = baseDir,
+                        LocalesDirPath = localesDir,
+                        BrowserSubprocessPath = Path.Combine(
+                            baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
+                    },
+                    // 不传任何 GPU 参数（禁用 GPU 会黑屏/闪退）。
+                    Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
+                    new[] { AppScheme.Build() });
+            });
+
+    /// <summary>解析 CEF locales 目录：优先 &lt;base&gt;\locales；否则遍历 &lt;base&gt;\runtimes\*\native\locales。</summary>
+    private static string ResolveLocalesDir(string baseDir)
+    {
+        var direct = Path.Combine(baseDir, "locales");
+        if (Directory.Exists(direct))
+            return direct;
+
+        var runtimes = Path.Combine(baseDir, "runtimes");
+        if (Directory.Exists(runtimes))
+        {
+            foreach (var rid in Directory.GetDirectories(runtimes))
+            {
+                var native = Path.Combine(rid, "native", "locales");
+                if (Directory.Exists(native))
+                    return native;
+            }
+        }
+        return direct; // 找不到就退回根目录 locales（路径非空，CEF 会自行提示）
+    }
 }

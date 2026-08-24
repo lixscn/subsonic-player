@@ -40,6 +40,17 @@ if (-not (Test-Path $exe)) { throw "未找到 exe：$exe" }
 if (-not (Test-Path "$TargetDir\libcef.dll")) { Write-Host "WARN 缺 libcef.dll（CEF 原生应外置）" -ForegroundColor Yellow }
 if (-not (Test-Path "$TargetDir\lib\bass.dll")) { Write-Host "WARN 缺 lib\bass.dll（BASS 应外置）" -ForegroundColor Yellow }
 
+# CEF locales 扁平化到根 \locales\（规范布局；Program.cs 的 ResolveLocalesDir 优先读根 locales）
+$locSrc = Join-Path $TargetDir 'runtimes\win-x64\native\locales'
+$locDst = Join-Path $TargetDir 'locales'
+if ((Test-Path $locSrc) -and -not (Test-Path "$locDst\en-US.pak")) {
+    if (Test-Path $locDst) { Remove-Item $locDst -Recurse -Force }
+    New-Item -ItemType Directory -Path $locDst -Force | Out-Null
+    Copy-Item "$locSrc\*" $locDst -Recurse
+    Write-Host "  locales 已扁平化到 $locDst" -ForegroundColor Cyan
+}
+if (-not (Test-Path "$locDst\en-US.pak")) { Write-Host "WARN 缺 locales\en-US.pak" -ForegroundColor Yellow }
+
 Write-Host "`n完成：$TargetDir\SubsonicPlayer.exe" -ForegroundColor Green
 Write-Host "exe 大小： $([math]::Round((Get-Item $exe).Length/1MB,1)) MB" -ForegroundColor Green
 Write-Host "目录总大小： $([math]::Round((Get-ChildItem $TargetDir -Recurse -File | Measure-Object Length -Sum).Sum/1MB,1)) MB" -ForegroundColor Green
