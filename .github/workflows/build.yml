@@ -1,4 +1,4 @@
-﻿name: Build
+name: Build
 
 # CI锛氭瘡娆?push/PR 鍦ㄧ湡瀹炵洰鏍?OS 涓婄紪璇?鍙戝竷楠岃瘉锛涙墦 v* tag 鏃惰嚜鍔ㄥ彂鐗堬紙GitHub Release 鎸傝浇涓夊钩鍙?zip锛夈€?#
 # 鍏抽敭鐐癸細
@@ -21,7 +21,7 @@ jobs:
             rid: win-x64
             restore: dotnet restore src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -r win-x64
             build: dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0-windows10.0.19041.0 -r win-x64 --no-restore -nologo
-            publish: dotnet publish src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained true --no-restore -nologo
+            publish: powershell -ExecutionPolicy Bypass -File publish-singlefile.ps1 -TargetDir "src/SubsonicPlayer.Cef/bin/Release/net10.0-windows10.0.19041.0/win-x64"
           - os: ubuntu-latest
             tfm: net10.0
             rid: linux-x64
