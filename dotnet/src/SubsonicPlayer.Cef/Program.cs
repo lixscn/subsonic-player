@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using System;
 using System.IO;
 using Xilium.CefGlue;
@@ -39,5 +39,17 @@ sealed class Program
                     WindowlessRenderingEnabled = true,
                 },
                 Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
-                new[] { AppScheme.Build() }));
+                new[] { AppScheme.Build(ResolveWebRoot()) }));
+
+    /// <summary>定位 WebAssets 目录（开发/发布两种形态）。</summary>
+    private static string ResolveWebRoot()
+    {
+        var probe = Path.Combine(AppContext.BaseDirectory, "WebAssets");
+        if (Directory.Exists(probe))
+            return probe;
+
+        // 开发时 WebAssets 在项目目录；发布时作为 Content 拷到输出目录
+        var dev = Path.Combine(Environment.CurrentDirectory, "src", "SubsonicPlayer.Cef", "WebAssets");
+        return Directory.Exists(dev) ? dev : AppContext.BaseDirectory;
+    }
 }
