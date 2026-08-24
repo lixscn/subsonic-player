@@ -95,7 +95,7 @@ public sealed class AppSchemeHandlerFactory : CefSchemeHandlerFactory
 /// <summary>把内嵌资源流返回给 CEF（新式 Open/Read 异步 API）。</summary>
 internal sealed class ResourceHandler : CefResourceHandler
 {
-    private readonly Stream _stream;
+    private Stream? _stream;
     private readonly string _name;
 
     public ResourceHandler(Stream stream, string name)
@@ -116,12 +116,20 @@ internal sealed class ResourceHandler : CefResourceHandler
         response.Status = 200;
         response.StatusText = "OK";
         response.MimeType = MimeFor(_name);
-        responseLength = _stream.Length;
+        responseLength = _stream?.Length ?? 0;
         redirectUrl = null!;
     }
 
     protected override bool Read(Stream response, int bytesToRead, out int bytesRead, CefResourceReadCallback callback)
     {
+        // CEF 在读到 EOF 后还会再调一次 Read 确认结束；此时流已释放，必须直接返回结束，
+        // 不能对已关闭的流调用 Read（否则抛 ObjectDisposedException）。
+        if (_stream is null)
+        {
+            bytesRead = 0;
+            return false;
+        }
+
         var buffer = new byte[bytesToRead];
         var read = _stream.Read(buffer, 0, bytesToRead);
         if (read > 0)
@@ -131,6 +139,7 @@ internal sealed class ResourceHandler : CefResourceHandler
         if (read < bytesToRead)
         {
             _stream.Dispose();
+            _stream = null;
         }
 
         return read > 0;
@@ -143,7 +152,11 @@ internal sealed class ResourceHandler : CefResourceHandler
         return true;
     }
 
-    protected override void Cancel() => _stream.Dispose();
+    protected override void Cancel()
+    {
+        _stream?.Dispose();
+        _stream = null;
+    }
 
     private static string MimeFor(string name)
     {
