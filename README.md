@@ -103,7 +103,7 @@ cd dotnet
 dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0-windows10.0.19041.0
 
 # 运行
-Start-Process "src/SubsonicPlayer.Cef/bin/Debug/net10.0-windows10.0.19041.0/SubsonicPlayerCef.exe"
+Start-Process "src/SubsonicPlayer.Cef/bin/Debug/net10.0-windows10.0.19041.0/SubsonicPlayer.exe"
 ```
 
 **首次使用**：启动后在「设置 → 音乐服务器」填写服务器地址（内网/外网）、用户名、密码即可。凭据加密存储（Windows DPAPI / 其他平台 AES-GCM），**不硬编码、不提交仓库**。

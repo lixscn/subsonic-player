@@ -50,7 +50,15 @@ sealed class Program
                         BrowserSubprocessPath = Path.Combine(
                             baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
                     },
-                    Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
+                    // 无 GPU / 远程 / 虚拟机环境下 CEF 的 GPU 进程会崩溃（GPU process isn't usable），
+                    // 导致黑屏 + 自退。禁用 GPU，改用软件渲染（OSR 离屏下可靠）。
+                    new System.Collections.Generic.KeyValuePair<string, string>[]
+                    {
+                        new("disable-gpu", ""),
+                        new("disable-gpu-compositing", ""),
+                        new("disable-gpu-vsync", ""),
+                        new("use-gl", "swiftshader"),
+                    },
                     new[] { AppScheme.Build(ResolveWebRoot()) });
             });
 

@@ -18,10 +18,10 @@ dotnet build src/SubsonicPlayer.Cef/SubsonicPlayer.Cef.csproj -f net10.0-windows
 node --check src/SubsonicPlayer.Cef/WebAssets/app.js
 
 # 运行（Debug 输出目录）
-Start-Process "src/SubsonicPlayer.Cef/bin/Debug/net10.0-windows10.0.19041.0/SubsonicPlayerCef.exe"
+Start-Process "src/SubsonicPlayer.Cef/bin/Debug/net10.0-windows10.0.19041.0/SubsonicPlayer.exe"
 
 # 停进程（改代码前先停）
-Stop-Process -Name SubsonicPlayerCef -ErrorAction SilentlyContinue
+Stop-Process -Name SubsonicPlayer -ErrorAction SilentlyContinue
 Stop-Process -Name "Xilium.CefGlue.BrowserProcess" -ErrorAction SilentlyContinue
 
 # 发布 Windows 程序包
