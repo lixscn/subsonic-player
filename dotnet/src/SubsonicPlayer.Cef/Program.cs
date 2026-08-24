@@ -52,20 +52,8 @@ sealed class Program
                     },
                     // 不额外加 GPU 参数（之前非单文件自包含可正常跑）；避免画蛇添足。
                     Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
-                    new[] { AppScheme.Build(ResolveWebRoot()) });
+                    new[] { AppScheme.Build() });
             });
-
-    /// <summary>定位 WebAssets 目录（开发/发布两种形态）。</summary>
-    private static string ResolveWebRoot()
-    {
-        var probe = Path.Combine(AppContext.BaseDirectory, "WebAssets");
-        if (Directory.Exists(probe))
-            return probe;
-
-        // 开发时 WebAssets 在项目目录；发布时作为 Content 拷到输出目录
-        var dev = Path.Combine(Environment.CurrentDirectory, "src", "SubsonicPlayer.Cef", "WebAssets");
-        return Directory.Exists(dev) ? dev : AppContext.BaseDirectory;
-    }
 
     /// <summary>
     /// 解析 CEF locales 目录：优先 &lt;base&gt;\locales；否则遍历 &lt;base&gt;\runtimes\*\native\locales。

@@ -1,45 +1,40 @@
-﻿using System;
+using System;
 using System.IO;
+using System.Reflection;
 using Xilium.CefGlue;
 using Xilium.CefGlue.Common;
 using Xilium.CefGlue.Common.Shared;
 
 namespace SubsonicPlayer.Services;
 
-/// <summary>为 app://ui/ 提供本地 WebAssets 文件。</summary>
+/// <summary>为 app://ui/ 提供内嵌的 WebAssets 资源（AppUI.*），无需磁盘 WebAssets 目录。</summary>
 public sealed class AppSchemeHandlerFactory : CefSchemeHandlerFactory
 {
-    private readonly string _root;
+    private readonly Assembly _asm;
+    private readonly System.Collections.Generic.HashSet<string> _resources;
 
-    public AppSchemeHandlerFactory(string root) => _root = root;
+    public AppSchemeHandlerFactory()
+    {
+        _asm = typeof(AppSchemeHandlerFactory).Assembly;
+        _resources = new System.Collections.Generic.HashSet<string>(_asm.GetManifestResourceNames(), StringComparer.Ordinal);
+    }
 
     protected override CefResourceHandler Create(CefBrowser browser, CefFrame frame, string schemeName, CefRequest request)
     {
         var url = request.Url;
-        Log($"Create: {url}");
         var path = ResolvePath(url);
         if (path is null)
             return new NotFoundHandler();
 
-        return new FileResourceHandler(path);
+        var resourceName = "AppUI." + path.Replace('/', '.');
+        if (!_resources.Contains(resourceName))
+            return new NotFoundHandler();
+
+        return new ResourceHandler(_asm.GetManifestResourceStream(resourceName)!, path);
     }
 
-    private static void Log(string msg)
-    {
-        try
-        {
-            var dir = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "subsonic-player");
-            System.IO.Directory.CreateDirectory(dir);
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(dir, "scheme.log"),
-                $"[{DateTime.Now:HH:mm:ss.fff}] {msg}{Environment.NewLine}");
-        }
-        catch { }
-    }
-
-    /// <summary>把 app://ui/xxx 解析为 WebAssets 下的绝对路径；非法返回 null。</summary>
-    private string? ResolvePath(string url)
+    /// <summary>把 app://ui/xxx 解析为相对于 WebAssets 的路径（如 index.html）；非法返回 null。</summary>
+    private static string? ResolvePath(string url)
     {
         var path = url;
         var schemeEnd = path.IndexOf("://", StringComparison.Ordinal);
@@ -50,29 +45,37 @@ public sealed class AppSchemeHandlerFactory : CefSchemeHandlerFactory
             if (slash >= 0) path = path[(slash + 1)..];
         }
 
+        // 去掉查询串
+        var q = path.IndexOf('?');
+        if (q >= 0) path = path[..q];
+        var h = path.IndexOf('#');
+        if (h >= 0) path = path[..h];
+
         if (string.IsNullOrEmpty(path))
             path = "index.html";
 
         // 防目录穿越
-        var full = Path.GetFullPath(Path.Combine(_root, path));
-        if (!full.StartsWith(Path.GetFullPath(_root), StringComparison.OrdinalIgnoreCase))
+        if (path.Contains("..", StringComparison.Ordinal))
             return null;
 
-        return File.Exists(full) ? full : null;
+        return path;
     }
 }
 
-/// <summary>把文件流返回给 CEF（新式 Open/Read 异步 API）。</summary>
-internal sealed class FileResourceHandler : CefResourceHandler
+/// <summary>把内嵌资源流返回给 CEF（新式 Open/Read 异步 API）。</summary>
+internal sealed class ResourceHandler : CefResourceHandler
 {
-    private readonly string _path;
-    private Stream? _stream;
+    private readonly Stream _stream;
+    private readonly string _name;
 
-    public FileResourceHandler(string path) => _path = path;
+    public ResourceHandler(Stream stream, string name)
+    {
+        _stream = stream;
+        _name = name;
+    }
 
     protected override bool Open(CefRequest request, out bool handleRequest, CefCallback callback)
     {
-        _stream = File.OpenRead(_path);
         handleRequest = true;
         callback.Continue();
         return true;
@@ -82,19 +85,13 @@ internal sealed class FileResourceHandler : CefResourceHandler
     {
         response.Status = 200;
         response.StatusText = "OK";
-        response.MimeType = MimeFor(_path);
-        responseLength = _stream?.Length ?? 0;
+        response.MimeType = MimeFor(_name);
+        responseLength = _stream.Length;
         redirectUrl = null!;
     }
 
     protected override bool Read(Stream response, int bytesToRead, out int bytesRead, CefResourceReadCallback callback)
     {
-        if (_stream is null)
-        {
-            bytesRead = 0;
-            return false;
-        }
-
         var buffer = new byte[bytesToRead];
         var read = _stream.Read(buffer, 0, bytesToRead);
         if (read > 0)
@@ -104,7 +101,6 @@ internal sealed class FileResourceHandler : CefResourceHandler
         if (read < bytesToRead)
         {
             _stream.Dispose();
-            _stream = null;
         }
 
         return read > 0;
@@ -117,15 +113,11 @@ internal sealed class FileResourceHandler : CefResourceHandler
         return true;
     }
 
-    protected override void Cancel()
-    {
-        _stream?.Dispose();
-        _stream = null;
-    }
+    protected override void Cancel() => _stream.Dispose();
 
-    private static string MimeFor(string path)
+    private static string MimeFor(string name)
     {
-        var ext = Path.GetExtension(path).ToLowerInvariant();
+        var ext = Path.GetExtension(name).ToLowerInvariant();
         return ext switch
         {
             ".html" => "text/html",
@@ -182,9 +174,9 @@ public static class AppScheme
 {
     public const string Name = "app";
 
-    public static CustomScheme Build(string webRoot) => new()
+    public static CustomScheme Build() => new()
     {
         SchemeName = Name,
-        SchemeHandlerFactory = new AppSchemeHandlerFactory(webRoot),
+        SchemeHandlerFactory = new AppSchemeHandlerFactory(),
     };
 }
