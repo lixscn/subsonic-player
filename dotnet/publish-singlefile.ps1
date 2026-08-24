@@ -51,6 +51,20 @@ if ((Test-Path $locSrc) -and -not (Test-Path "$locDst\en-US.pak")) {
 }
 if (-not (Test-Path "$locDst\en-US.pak")) { Write-Host "WARN 缺 locales\en-US.pak" -ForegroundColor Yellow }
 
+# 单文件会把 Xilium.CefGlue.*.dll 打进主 exe，但 CEF 浏览器子进程需要它们作为独立文件加载；
+# 从 NuGet 缓存把 CefGlue 库外置回根目录与子进程目录，否则子进程起不来 → CEF 初始化失败。
+$cefglueSrc = Join-Path $env:USERPROFILE '.nuget\packages\cefglue.common\120.6099.211\lib\net8.0'
+$cefglueFiles = @('Xilium.CefGlue.dll', 'Xilium.CefGlue.Common.dll', 'Xilium.CefGlue.Common.Shared.dll')
+foreach ($f in $cefglueFiles) {
+    $src = Join-Path $cefglueSrc $f
+    if (Test-Path $src) {
+        Copy-Item $src (Join-Path $TargetDir $f) -Force
+        Copy-Item $src (Join-Path $TargetDir "CefGlueBrowserProcess\$f") -Force
+    } else {
+        Write-Host "WARN 缺 NuGet 里的 $f" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "`n完成：$TargetDir\SubsonicPlayer.exe" -ForegroundColor Green
 Write-Host "exe 大小： $([math]::Round((Get-Item $exe).Length/1MB,1)) MB" -ForegroundColor Green
 Write-Host "目录总大小： $([math]::Round((Get-ChildItem $TargetDir -Recurse -File | Measure-Object Length -Sum).Sum/1MB,1)) MB" -ForegroundColor Green
