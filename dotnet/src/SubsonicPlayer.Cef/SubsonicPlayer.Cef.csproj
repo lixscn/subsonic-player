@@ -26,7 +26,7 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <Content Include="$(NativeDir)\*" Condition="'$(NativeDir)' != ''">
-      <Link>%(Filename)%(Extension)</Link>
+      <Link>lib\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- WebAssets 内嵌为程序集资源（AppUI.*），app:// 服务从资源读取，部署无需 WebAssets 目录 -->

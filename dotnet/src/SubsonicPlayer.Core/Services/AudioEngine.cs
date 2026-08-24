@@ -57,7 +57,7 @@ public class AudioEngine
         foreach (var name in pluginNames)
         {
             // 插件缺失时静默跳过，不影响其他格式
-            BassNative.BASS_PluginLoad(Path.Combine(baseDir, name + LibraryExtension), 0);
+            BassNative.BASS_PluginLoad(Path.Combine(baseDir, "lib", name + LibraryExtension), 0);
         }
     }
 
