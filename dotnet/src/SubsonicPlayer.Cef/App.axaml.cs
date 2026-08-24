@@ -172,7 +172,7 @@ public partial class App : Application
         {
             // Windows 用 ico，macOS/Linux 用 png（非 Windows 平台 .ico 无法解码为托盘图标）
             Icon = new WindowIcon(AssetLoader.Open(new Uri(
-                $"avares://SubsonicPlayer/Assets/avalonia-logo.{(OperatingSystem.IsWindows() ? "ico" : "png")}"))),
+                $"avares://SubsonicPlayerCef/Assets/avalonia-logo.{(OperatingSystem.IsWindows() ? "ico" : "png")}"))),
             ToolTipText = "Subsonic 音乐播放器",
             // 单击/双击托盘图标 → 显示主窗口
             Command = new RelayCommand(() =>

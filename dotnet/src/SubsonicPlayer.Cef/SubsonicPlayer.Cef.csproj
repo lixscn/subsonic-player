@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFrameworks>net10.0-windows10.0.19041.0;net10.0</TargetFrameworks>
     <RootNamespace>SubsonicPlayer</RootNamespace>
-    <AssemblyName>SubsonicPlayer</AssemblyName>
+    <AssemblyName>SubsonicPlayerCef</AssemblyName>
     <Nullable>enable</Nullable>
     <ApplicationManifest Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
@@ -29,11 +29,10 @@
       <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <!-- WebAssets 内嵌为程序集资源（AppUI.*），app:// 服务从资源读取，部署无需 WebAssets 目录 -->
-    <EmbeddedResource Include="WebAssets\index.html" LogicalName="AppUI.index.html" />
-    <EmbeddedResource Include="WebAssets\styles.css" LogicalName="AppUI.styles.css" />
-    <EmbeddedResource Include="WebAssets\app.js" LogicalName="AppUI.app.js" />
-    <EmbeddedResource Include="WebAssets\mini.html" LogicalName="AppUI.mini.html" />
+    <Content Include="WebAssets\**">
+      <Link>WebAssets\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
