@@ -56,7 +56,7 @@ sealed class Program
                             BrowserSubprocessPath = Path.Combine(
                                 baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
                         },
-                        // 不传任何 GPU 参数（禁用 GPU 会黑屏/闪退）。
+                        // 不传任何 GPU 参数（之前加 swiftshader 被确认方向不对；非 GPU 问题）。
                         Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
                         new[] { AppScheme.Build() });
 

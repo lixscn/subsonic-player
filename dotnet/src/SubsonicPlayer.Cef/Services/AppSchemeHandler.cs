@@ -46,7 +46,7 @@ public sealed class AppSchemeHandlerFactory : CefSchemeHandlerFactory
         }
 
         Log($"  HIT resource: {resourceName} (len={stream.Length})");
-        return new ResourceHandler(stream, path);
+        return new ResourceHandler(stream, path, url);
     }
 
     /// <summary>把 app://ui/xxx 解析为相对于 WebAssets 的路径（如 index.html）；非法返回 null。</summary>
@@ -77,7 +77,7 @@ public sealed class AppSchemeHandlerFactory : CefSchemeHandlerFactory
         return path;
     }
 
-    private static void Log(string msg)
+    internal static void Log(string msg)
     {
         try
         {
@@ -97,52 +97,84 @@ internal sealed class ResourceHandler : CefResourceHandler
 {
     private Stream? _stream;
     private readonly string _name;
+    private readonly string _url;
 
-    public ResourceHandler(Stream stream, string name)
+    public ResourceHandler(Stream stream, string name, string url)
     {
         _stream = stream;
         _name = name;
+        _url = url;
     }
 
     protected override bool Open(CefRequest request, out bool handleRequest, CefCallback callback)
     {
-        handleRequest = true;
-        callback.Continue();
-        return true;
+        try
+        {
+            handleRequest = true;
+            callback.Continue();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppSchemeHandlerFactory.Log($"ResourceHandler.Open FAILED url={_url}: {ex}");
+            handleRequest = true;
+            callback.Cancel();
+            return true;
+        }
     }
 
     protected override void GetResponseHeaders(CefResponse response, out long responseLength, out string redirectUrl)
     {
-        response.Status = 200;
-        response.StatusText = "OK";
-        response.MimeType = MimeFor(_name);
-        responseLength = _stream?.Length ?? 0;
         redirectUrl = null!;
+        try
+        {
+            response.Status = 200;
+            response.StatusText = "OK";
+            response.MimeType = MimeFor(_name);
+            responseLength = _stream is null ? 0 : _stream.Length;
+        }
+        catch (Exception ex)
+        {
+            AppSchemeHandlerFactory.Log($"ResourceHandler.GetResponseHeaders FAILED url={_url}: {ex}");
+            response.Status = 500;
+            responseLength = 0;
+        }
     }
 
     protected override bool Read(Stream response, int bytesToRead, out int bytesRead, CefResourceReadCallback callback)
     {
-        // CEF 在读到 EOF 后还会再调一次 Read 确认结束；此时流已释放，必须直接返回结束，
-        // 不能对已关闭的流调用 Read（否则抛 ObjectDisposedException）。
-        if (_stream is null)
+        try
         {
+            // CEF 在读到 EOF 后还会再调一次 Read 确认结束；此时流已释放，必须直接返回结束，
+            // 不能对已关闭的流调用 Read（否则抛 ObjectDisposedException）。
+            if (_stream is null)
+            {
+                bytesRead = 0;
+                return false;
+            }
+
+            var buffer = new byte[bytesToRead];
+            var read = _stream.Read(buffer, 0, bytesToRead);
+            if (read > 0)
+                response.Write(buffer, 0, read);
+
+            bytesRead = read;
+            if (read < bytesToRead)
+            {
+                _stream.Dispose();
+                _stream = null;
+            }
+
+            return read > 0;
+        }
+        catch (Exception ex)
+        {
+            AppSchemeHandlerFactory.Log($"ResourceHandler.Read FAILED url={_url}: {ex}");
             bytesRead = 0;
+            try { _stream?.Dispose(); } catch { }
+            _stream = null;
             return false;
         }
-
-        var buffer = new byte[bytesToRead];
-        var read = _stream.Read(buffer, 0, bytesToRead);
-        if (read > 0)
-            response.Write(buffer, 0, read);
-
-        bytesRead = read;
-        if (read < bytesToRead)
-        {
-            _stream.Dispose();
-            _stream = null;
-        }
-
-        return read > 0;
     }
 
     protected override bool Skip(long bytesToSkip, out long bytesSkipped, CefResourceSkipCallback callback)
@@ -154,7 +186,11 @@ internal sealed class ResourceHandler : CefResourceHandler
 
     protected override void Cancel()
     {
-        _stream?.Dispose();
+        try
+        {
+            _stream?.Dispose();
+        }
+        catch { }
         _stream = null;
     }
 
