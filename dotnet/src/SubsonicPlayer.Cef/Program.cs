@@ -28,32 +28,45 @@ sealed class Program
             .LogToTrace()
             .AfterSetup(_ =>
             {
-                // CEF(Chromium) 原生永远不打包进 exe，全部外置为目录里的文件：
-                //   - resources.pak / icudtl.dat / snapshot_blob.bin / chrome_*.pak / libcef.dll 在 exe 旁（ResourcesDirPath）
-                //   - locales\*.pak 在 exe 旁目录（LocalesDirPath，可能是根 locales 或 runtimes\*\native\locales）
-                //   - CefGlueBrowserProcess 子进程
-                // 单文件(托管)模式下自动探测不可靠，这里显式告诉 CEF 去外置目录找。
-                var baseDir = AppContext.BaseDirectory;
-                var localesDir = ResolveLocalesDir(baseDir);
-                CefRuntimeLoader.Initialize(
-                    new CefSettings
-                    {
-                        RootCachePath = Path.Combine(
-                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                            "subsonic-player", "cef-cache"),
-                        LogFile = Path.Combine(
-                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                            "subsonic-player", "cef.log"),
-                        LogSeverity = CefLogSeverity.Info,
-                        WindowlessRenderingEnabled = true,
-                        ResourcesDirPath = baseDir,
-                        LocalesDirPath = localesDir,
-                        BrowserSubprocessPath = Path.Combine(
-                            baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
-                    },
-                    // 不传任何 GPU 参数（禁用 GPU 会黑屏/闪退）。
-                    Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
-                    new[] { AppScheme.Build() });
+                try
+                {
+                    // CEF(Chromium) 原生永远不打包进 exe，全部外置为目录里的文件：
+                    //   - resources.pak / icudtl.dat / snapshot_blob.bin / chrome_*.pak / libcef.dll 在 exe 旁（ResourcesDirPath）
+                    //   - locales\*.pak 在 exe 旁目录（LocalesDirPath，可能是根 locales 或 runtimes\*\native\locales）
+                    //   - CefGlueBrowserProcess 子进程
+                    // 单文件(托管)模式下自动探测不可靠，这里显式告诉 CEF 去外置目录找。
+                    var baseDir = AppContext.BaseDirectory;
+                    var localesDir = ResolveLocalesDir(baseDir);
+                    LogInit($"--- CEF init start --- baseDir={baseDir} localesDir={localesDir}");
+                    LogInit($"libcef exists={File.Exists(Path.Combine(baseDir, "libcef.dll"))} resources={File.Exists(Path.Combine(baseDir, "resources.pak"))} subprocess={File.Exists(Path.Combine(baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"))}");
+
+                    CefRuntimeLoader.Initialize(
+                        new CefSettings
+                        {
+                            RootCachePath = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                "subsonic-player", "cef-cache"),
+                            LogFile = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                "subsonic-player", "cef.log"),
+                            LogSeverity = CefLogSeverity.Info,
+                            WindowlessRenderingEnabled = true,
+                            ResourcesDirPath = baseDir,
+                            LocalesDirPath = localesDir,
+                            BrowserSubprocessPath = Path.Combine(
+                                baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
+                        },
+                        // 不传任何 GPU 参数（禁用 GPU 会黑屏/闪退）。
+                        Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
+                        new[] { AppScheme.Build() });
+
+                    LogInit("--- CEF init OK ---");
+                }
+                catch (Exception ex)
+                {
+                    LogInit("--- CEF init FAILED --- " + ex);
+                    throw;
+                }
             });
 
     /// <summary>解析 CEF locales 目录：优先 &lt;base&gt;\locales；否则遍历 &lt;base&gt;\runtimes\*\native\locales。</summary>
@@ -74,5 +87,19 @@ sealed class Program
             }
         }
         return direct; // 找不到就退回根目录 locales（路径非空，CEF 会自行提示）
+    }
+
+    private static void LogInit(string msg)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "subsonic-player");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "cef-init.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {msg}{Environment.NewLine}");
+        }
+        catch { }
     }
 }
