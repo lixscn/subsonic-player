@@ -54,5 +54,6 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 -Platform win-x64
 
 ## 记忆边界
 
+- **继续既有会话/任务：先读 `dotnet/CURRENT_STATE.md`**（接班说明：当前状态/待办/下一步/关键目录）
 - 项目专属信息：`dotnet/MEMORY.md`（技术栈、坑、跨平台、调试）
 - 跨项目通用信息：`~/.config/opencode/AGENTS.md`（全局）+ `~/memory/`
