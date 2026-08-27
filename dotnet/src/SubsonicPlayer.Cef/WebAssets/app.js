@@ -1465,27 +1465,31 @@ async function init() {
         blue:   { name:'蓝',   dark:{accent:'#60A5FA',soft:'rgba(96,165,250,0.14)',text:'#93C5FD',dim:'#1D4ED8'}, light:{accent:'#2563EB',soft:'rgba(37,99,235,0.14)',text:'#1E40AF',dim:'#1D4ED8'} },
     };
     function applyAccentTheme() {
-        const key = localStorage.getItem('accentTheme') || 'teal';
-        const t = ACCENT_THEMES[key] || ACCENT_THEMES.teal;
-        const isLight = document.documentElement.classList.contains('light');
-        const c = t[isLight ? 'light' : 'dark'];
-        const st = document.documentElement.style;
-        st.setProperty('--accent', c.accent);
-        st.setProperty('--accent-soft', c.soft);
-        st.setProperty('--accent-text', c.text);
-        st.setProperty('--accent-dim', c.dim);
-        document.querySelectorAll('#accentThemes .accent-swatch').forEach(b => {
-            b.classList.toggle('active', b.dataset.accent === key);
-        });
+        try {
+            const key = localStorage.getItem('accentTheme') || 'teal';
+            const t = ACCENT_THEMES[key] || ACCENT_THEMES.teal;
+            const isLight = document.documentElement.classList.contains('light');
+            const c = t[isLight ? 'light' : 'dark'];
+            const st = document.documentElement.style;
+            st.setProperty('--accent', c.accent);
+            st.setProperty('--accent-soft', c.soft);
+            st.setProperty('--accent-text', c.text);
+            st.setProperty('--accent-dim', c.dim);
+            document.querySelectorAll('#accentThemes .accent-swatch').forEach(b => {
+                b.classList.toggle('active', b.dataset.accent === key);
+            });
+        } catch (e) {
+            // localStorage 在 app:// 协议下可能不可用（SecurityError）——静默跳过，绝不断掉页面初始化
+        }
     }
     function initAccentThemes() {
         const wrap = document.getElementById('accentThemes');
         if (!wrap) return;
-        applyAccentTheme();
+        try { applyAccentTheme(); } catch (e) { /* ignore */ }
         wrap.addEventListener('click', e => {
             const btn = e.target.closest('.accent-swatch');
             if (!btn) return;
-            localStorage.setItem('accentTheme', btn.dataset.accent);
+            try { localStorage.setItem('accentTheme', btn.dataset.accent); } catch (e) { /* ignore */ }
             applyAccentTheme();
         });
     }
