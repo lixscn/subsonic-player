@@ -522,12 +522,24 @@ public partial class PlaybackService : ObservableObject
         if (music is null)
             return false;
 
-        var channel = _engine.CreateStream(music.GetStreamUrl(song.Id));
-        if (channel == 0)
-            return false;
+        var url = music.GetStreamUrl(song.Id);
+        // 网络/建流放到后台线程，避免阻塞 UI/调用线程（首播、慢网下极易卡 UI）；
+        // 完成后经 UI 调度器回到主线程执行播放与状态更新，保证可观察属性的 UI 线程语义。
+        _ = Task.Run(() =>
+        {
+            var channel = _engine.CreateStream(url);
+            AppServices.UiDispatcher.Post(() =>
+            {
+                if (channel == 0)
+                {
+                    IsPlaying = false;
+                    return;
+                }
 
-        _engine.PlayChannel(channel);
-        ApplyState(song);
+                _engine.PlayChannel(channel);
+                ApplyState(song);
+            });
+        });
         return true;
     }
 
@@ -619,7 +631,14 @@ public partial class PlaybackService : ObservableObject
         if (music is null)
             return;
 
-        _preloadChannel = _engine.CreateStream(music.GetStreamUrl(_queue[nextIndex].Id));
+        // 网络/建流放后台，避免阻塞 UI；完成后回填预载句柄（AdvanceTo 读取，若未就绪则退化为即时建流）
+        var url = music.GetStreamUrl(_queue[nextIndex].Id);
+        _ = Task.Run(() =>
+        {
+            var ch = _engine.CreateStream(url);
+            if (ch != 0)
+                _preloadChannel = ch;
+        });
     }
 
     private void FreePreload()
