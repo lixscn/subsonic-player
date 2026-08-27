@@ -7,6 +7,7 @@
     <AssemblyName>SubsonicPlayer</AssemblyName>
     <Nullable>enable</Nullable>
     <ApplicationManifest Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">Assets\avalonia-logo.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <NativeDir Condition="$(RuntimeIdentifier.StartsWith('win'))">native\win-x64</NativeDir>
     <NativeDir Condition="$(RuntimeIdentifier.StartsWith('osx'))">native\osx</NativeDir>
