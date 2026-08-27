@@ -1303,3 +1303,11 @@ html.light .vinyl-sleeve {
 .skel-albums .skel-card { aspect-ratio: 1; border-radius: 8px; background: var(--bg-active); }
 @keyframes skelPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 .skel-section .skel-title, .skel-section .skel-row, .skel-section .skel-card { animation: skelPulse 1.4s ease-in-out infinite; }
+
+/* 外观 / 强调色主题选择器 */
+.theme-label { margin: 6px 0 4px; font-size: 12px; color: var(--text-secondary); }
+.accent-themes { display: flex; gap: 8px; margin: 8px 0; }
+.accent-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; }
+.accent-swatch:hover { transform: scale(1.12); }
+.accent-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 3px var(--bg-surface); }
+.theme-desc { font-size: 12px; color: var(--text-muted); margin: 6px 0 2px; }

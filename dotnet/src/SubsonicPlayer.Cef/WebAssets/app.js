@@ -1431,6 +1431,7 @@ async function init() {
     initEvents();
     initSettingsModalEvents();
     initDiscoverEvents();
+    initAccentThemes();
 
     try {
         const initial = await Bridge.invoke('getInitialState');
@@ -1455,10 +1456,45 @@ async function init() {
         for (const k of Object.keys(songsCache)) delete songsCache[k];
         if (typeof currentPage === 'string' && currentPage) navigate(currentPage);
     });
+    // ---- 自定义强调色主题（localStorage 持久化；app:// 为标准安全源后 localStorage 可用）----
+    const ACCENT_THEMES = {
+        teal:   { name:'青绿', dark:{accent:'#2DD4A7',soft:'rgba(45,212,167,0.14)',text:'#5EEAD4',dim:'#15803D'}, light:{accent:'#0FAE85',soft:'rgba(15,174,133,0.14)',text:'#0B6B4F',dim:'#0E7490'} },
+        purple: { name:'紫',   dark:{accent:'#A78BFA',soft:'rgba(167,139,250,0.14)',text:'#C4B5FD',dim:'#6D28D9'}, light:{accent:'#7C3AED',soft:'rgba(124,58,237,0.14)',text:'#5B21B6',dim:'#6D28D9'} },
+        rose:   { name:'玫红', dark:{accent:'#F472B6',soft:'rgba(244,114,182,0.14)',text:'#F9A8D4',dim:'#BE185D'}, light:{accent:'#DB2777',soft:'rgba(219,39,119,0.14)',text:'#9D174D',dim:'#BE185D'} },
+        amber:  { name:'琥珀', dark:{accent:'#FBBF24',soft:'rgba(251,191,36,0.14)',text:'#FCD34D',dim:'#B45309'}, light:{accent:'#D97706',soft:'rgba(217,119,6,0.14)',text:'#92400E',dim:'#B45309'} },
+        blue:   { name:'蓝',   dark:{accent:'#60A5FA',soft:'rgba(96,165,250,0.14)',text:'#93C5FD',dim:'#1D4ED8'}, light:{accent:'#2563EB',soft:'rgba(37,99,235,0.14)',text:'#1E40AF',dim:'#1D4ED8'} },
+    };
+    function applyAccentTheme() {
+        const key = localStorage.getItem('accentTheme') || 'teal';
+        const t = ACCENT_THEMES[key] || ACCENT_THEMES.teal;
+        const isLight = document.documentElement.classList.contains('light');
+        const c = t[isLight ? 'light' : 'dark'];
+        const st = document.documentElement.style;
+        st.setProperty('--accent', c.accent);
+        st.setProperty('--accent-soft', c.soft);
+        st.setProperty('--accent-text', c.text);
+        st.setProperty('--accent-dim', c.dim);
+        document.querySelectorAll('#accentThemes .accent-swatch').forEach(b => {
+            b.classList.toggle('active', b.dataset.accent === key);
+        });
+    }
+    function initAccentThemes() {
+        const wrap = document.getElementById('accentThemes');
+        if (!wrap) return;
+        applyAccentTheme();
+        wrap.addEventListener('click', e => {
+            const btn = e.target.closest('.accent-swatch');
+            if (!btn) return;
+            localStorage.setItem('accentTheme', btn.dataset.accent);
+            applyAccentTheme();
+        });
+    }
+
     StateBridge.on('theme', s => {
         if (s && s.theme) {
             const isLight = s.theme === 'light';
             document.documentElement.classList.toggle('light', isLight);
+            if (typeof applyAccentTheme === 'function') applyAccentTheme(); // 切换浅深后重应用强调色
             // 更新主题图标
             const iconUse = document.querySelector('#topThemeIcon use');
             if (iconUse) iconUse.setAttribute('href', isLight ? '#i-sun' : '#i-moon');
