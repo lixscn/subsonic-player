@@ -257,5 +257,10 @@ public static class AppScheme
     {
         SchemeName = Name,
         SchemeHandlerFactory = new AppSchemeHandlerFactory(),
+        // 让 app:// 成为标准安全源：HTML UI 里的 localStorage / Canvas / 跨域 fetch / 字体等更稳，
+        // 避免被当作普通匿名 scheme 而受限（与 OutSystems WebView 的自定义协议一致）。
+        IsStandard = true,
+        IsSecure = true,
+        IsFetchEnabled = true,
     };
 }

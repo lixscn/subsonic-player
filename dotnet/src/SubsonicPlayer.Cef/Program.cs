@@ -51,6 +51,10 @@ sealed class Program
                                 "subsonic-player", "cef.log"),
                             LogSeverity = CefLogSeverity.Info,
                             WindowlessRenderingEnabled = true,
+                            // 深色背景，避免 OSR 页面加载前的白闪（与 OutSystems 一致）
+                            BackgroundColor = new CefColor(0xFF141416u),
+                            // 采集未捕获 JS 异常栈深，便于排查
+                            UncaughtExceptionStackSize = 32,
                             ResourcesDirPath = baseDir,
                             LocalesDirPath = localesDir,
                             BrowserSubprocessPath = Path.Combine(
@@ -59,6 +63,12 @@ sealed class Program
                         // 不传任何 GPU 参数（之前加 swiftshader 被确认方向不对；非 GPU 问题）。
                         Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
                         new[] { AppScheme.Build() });
+
+                    // 退出时干净关闭 CEF（释放子进程/缓存，避免残留；与 OutSystems 一致）
+                    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+                    {
+                        try { CefRuntime.Shutdown(); } catch { }
+                    };
 
                     LogInit("--- CEF init OK ---");
                 }
