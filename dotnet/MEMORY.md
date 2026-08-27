@@ -155,3 +155,38 @@
 ## 来源项目
 
 播放器服务的音乐库/Subsonic 服务托管在自建 NAS。
+
+## 当前状态 / 待办（2026-08 一轮：黑屏排查→单文件化→网络优化→线程→图标→CEF 加载/配置→主题）
+
+### 当前可运行的部署
+- **单文件版**：`D:\tools\SubsonicPlayer-single\`，`SubsonicPlayer.exe`（~253MB，全部应用托管代码 + .NET 运行时），CEF 原生（libcef.dll/resources.pak/icudtl.dat/snapshot/chrome_*.pak/locales\*.pak/CefGlueBrowserProcess）与 BASS（`lib\`）全外置。
+- 旧的非单文件自包含 `D:\tools\SubsonicPlayer` **已删除**（单文件是现行方案）。
+- CI 的 **Windows 构建已改单文件**（`publish-singlefile.ps1`）；Linux/macOS 仍非单文件（CEF 子进程修复只在 Windows 验证过）。
+- 构建脚本：`dotnet/publish-singlefile.ps1` / `.bat`（**必须 UTF-8 BOM**，否则 Windows PowerShell 5.1 中文注释乱码→解析错误→CI 失败）。
+
+### 本轮踩坑与定论（重要，防再踩）
+1. **黑屏/闪退不是 GPU**：之前加 `disable-gpu/use-angle=swiftshader` 反而黑屏，**一律不加任何 GPU 参数**。
+2. **WebAssets 内嵌**：`WebAssets` 以内嵌资源（`AppUI.*`）服务（`AppSchemeHandler` 用 `GetManifestResourceStream`）。**`ResourceHandler.Read` 必须判流空**（CEF 读到 EOF 后还会再调 Read，流已释放则 `ObjectDisposedException` 闪退）——已加空判 + 全方法 try/catch。磁盘/内嵌皆可，当前用**内嵌**。
+3. **单文件 + CEF 的核心坑**：`PublishSingleFile=true` 会把 CEF 子进程（`CefGlueBrowserProcess\Xilium.CefGlue.BrowserProcess.exe`）需要的**托管 dll（System.*、Xilium.CefGlue.* 等）打进主 exe**，子进程缺依赖起不来 → CEF 报「GPU process isn't usable / exit 0x80004005」。**修复**：发布后从一次「非单文件自包含发布」把完整 `CefGlueBrowserProcess` 目录拷回目标（`publish-singlefile.ps1` 已内置）。locales 还要**扁平化到根 `locales\`**（ResolveLocalesDir 优先根 locales）。
+4. **BASS 在 `lib\`**：csproj `<Content Include="$(NativeDir)\*"><Link>lib\%(Filename)%(Extension)</Link>`；`BassBootstrapper`（`[ModuleInitializer]`）启动时按绝对路径预加载 `bass/bass_fx/bassmix`（`NativeLibrary.Load`），否则 `DllImport("bass")` 找不到 `lib\` 下的库。该 `ModuleInitializer` 触发 **CA2255 警告（无害）**。BASS 归属（Core vs Cef）**未迁移**，保持「调用在 Core、原生文件在应用项目」。
+5. **首播卡 UI 冻结**：播放入口（CefUiBridge `Dispatcher.UIThread.Post`）把 `PlayQueue` 派到 UI 线程，`PlayCurrent/PreloadNext` 里的 `BASS_StreamCreateURL`(网络)+`BASS_Init` 阻塞 UI 线程。**修复**：`CreateStream` 挪到后台线程（`Task.Run`），回主线程经 `AppServices.UiDispatcher.Post` 播放+更新状态。下一首本来就因为 `PreloadNext` 预建了流所以不卡。
+6. **exe 图标**：csproj 加 `<ApplicationIcon Condition="Windows TFM">Assets\avalonia-logo.ico</ApplicationIcon>`（此前 exe 无图标，显示默认）。
+7. **网络慢优化**：BASS `NET_BUFFER=3000ms`/`NET_PREBUF=-1`/`NET_CONNECTTIMEOUT=15s`/`NET_READTIMEOUT=30s`；`ImageLoader` 加磁盘缓存(`%APPDATA%\...\cover-cache`)+15s 超时+Retry；`TtlCache`(60s) 缓存艺术家/专辑列表/播放列表；`GetSongsPage` N+1 改限并发(4)；`DownloadService` 超时 5min；`Retry.DoAsync` 通用重试。
+8. **cef 加载方式（学 OutSystems WebView）**：`app://` 的 CustomScheme 设 `IsStandard/IsSecure/IsFetchEnabled`（HTML UI 的 localStorage/Canvas 更稳）；`CefSettings` 加 `BackgroundColor`(深色防白闪)+`UncaughtExceptionStackSize`；退出 `CefRuntime.Shutdown()`。
+9. **localStorage 在 `app://` 下会抛 SecurityError**（即使设了 standard/secure）→ 访问 localStorage 的 JS **必须 try/catch**，否则 `init()` 中断→页面无内容（已修）。
+10. **CefGlue 120 差异**：`CefResponse` 无 `SetHeader`（Cache-Control 没做成）；`CustomScheme` 无 `IsCORSEnabled`（只用 IsStandard/IsSecure/IsFetchEnabled）。
+
+### 自定义强调色主题（本轮新增）
+- 设置弹窗「外观→强调色」5 套（青绿/紫/玫红/琥珀/蓝），每套深/浅两档。
+- 经 CSS 变量覆盖 + `localStorage` 持久化；`init()` 里 `initAccentThemes()`；浅/深切换时 `StateBridge.on('theme')` 里重应用。
+
+### 待办（用户要求"都做"，尚未实现 —— 建议在新会话继续）
+1. **全屏播放器页**（HTML UI 新增沉浸式 Now Playing 视图）
+2. **智能歌单编辑器（Navidrome）**（协议专属规则编辑）
+3. **furigana/romaji 显示**
+
+### 下一步开发时的注意
+- 改 `WebAssets`(HTML/CSS/JS) → `node --check app.js` 校验 → 清 `%APPDATA%\subsonic-player\cef-cache` 再重启（否则旧缓存）。
+- 单文件版重建：`powershell -ExecutionPolicy Bypass -File dotnet/publish-singlefile.ps1`。
+- 主目录：`D:\tools\SubsonicPlayer-single\`；改动 WebAssets 需重编译（内嵌资源）。
+
