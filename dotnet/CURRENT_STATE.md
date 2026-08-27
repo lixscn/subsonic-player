@@ -28,13 +28,22 @@
 
 ## 待办（用户要求"都做"，尚未实现）
 
-1. **全屏播放器页**（HTML UI 新增沉浸式 Now Playing 视图）
-2. **智能歌单编辑器（Navidrome）**（协议专属规则编辑）
-3. **furigana/romaji 显示**
+1. **完整内置预设主题**（**方案已定稿，待实现**）——当前只做了"强调色"（5 套，localStorage），未做完整主题。按用户确认：
+   - 只做**内置预设主题**（不做外部自定义主题文件）。
+   - 一个主题 = 一套完整 CSS 变量（背景/文字/边框/强调/玻璃等全部 `--*`）。
+   - 预设（约 6 套，深浅就是其中两项）：深邃黑(dark,默认) / 月光白(light) / 森林绿 / 午夜蓝 / 落日橙 / 玫瑰紫。
+   - **应用**：`app.js` 加 `applyTheme(id)` → `document.documentElement.style.setProperty(...)` 内联覆盖全套变量，即时生效。
+   - **选择器**：设置弹窗加「主题」下拉列出 6 套；选即应用。
+   - **深浅**：就是 dark/light 两套；顶栏 ☀/🌙 按钮保留作 dark/light 快捷切换。
+   - **持久化**：选中主题 id 存 **C# `AppSettings`（加 `ThemeId` 字段）**，不依赖 localStorage（`app://` 下会 SecurityError）；启动/切换时 C# 经 `StateBridge.on('theme')` 把主题交给 JS 应用 → 下次打开恢复。
+   - 实现：`styles.css`（把 `:root`/`html.light` 变量提为 dark/light 预设 + 新增 4 套）；`app.js`（主题字典 + applyTheme + 下拉联动 + 深浅按钮切 dark/light）；`index.html`（设置加主题下拉）；C# `AppSettings`（ThemeId + state 下发）。
+2. **全屏播放器页**（HTML UI 新增沉浸式 Now Playing 视图）
+3. **智能歌单编辑器（Navidrome）**（协议专属规则编辑）
+4. **furigana/romaji 显示**
 
 ## 建议的下一步（在新会话继续）
 
-- 逐个做上面 3 个待办功能，**建议先做全屏播放器页**（用户可感知度最高、改动集中在 `WebAssets/`）。
+- **先做「完整内置预设主题」**（方案已定稿、改动集中在 `WebAssets` + `AppSettings`，用户可感知度高），再做全屏播放器页。
 - 改 `WebAssets`(HTML/CSS/JS) 后：`node --check app.js` → 清 `%APPDATA%\subsonic-player\cef-cache` → 重启（内嵌资源需重编译：`powershell -ExecutionPolicy Bypass -File dotnet/publish-singlefile.ps1`）。
 
 ## 关键目录
