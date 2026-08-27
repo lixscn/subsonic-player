@@ -34,6 +34,13 @@ public class AudioEngine
         if (!BassNative.BASS_Init(-1, 44100, BASSInit.Default, IntPtr.Zero, IntPtr.Zero))
             return false;
 
+        // 慢网优化：加大网络缓冲/预缓冲/超时，减少 underrun 导致的播放卡顿。
+        // NetBuffer 单位 ms；NetPrebuf=-1 表示起播前预缓冲一份缓冲的量。
+        BassNative.BASS_SetConfig(BASSConfig.NetBuffer, 3000);          // 3s 网络缓冲
+        BassNative.BASS_SetConfig(BASSConfig.NetPrebuf, -1);            // 起播前预缓冲一份缓冲
+        BassNative.BASS_SetConfig(BASSConfig.NetConnectTimeout, 15000); // 连接超时 15s
+        BassNative.BASS_SetConfig(BASSConfig.NetReadTimeout, 30000);    // 读超时 30s
+
         LoadPlugins();
 
         _mixer = BassMixNative.BASS_Mixer_StreamCreate(44100, 2, (uint)(BASSFlag.SampleFloat | (BASSFlag)BASSMixFlag.MixerEnd));

@@ -9,7 +9,7 @@ namespace SubsonicPlayer.Services;
 /// <summary>歌曲原文件下载。</summary>
 public static class DownloadService
 {
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     /// <summary>解析下载目录（配置为空时回退「我的音乐」）。</summary>
     public static string ResolveDownloadDir()

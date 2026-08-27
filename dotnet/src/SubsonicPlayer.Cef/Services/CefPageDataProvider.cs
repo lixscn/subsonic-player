@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using SubsonicPlayer.Models;
 using SubsonicPlayer.Services;
@@ -17,6 +18,53 @@ public sealed class CefPageDataProvider
 
     // 会话级连接缓存：首次连接成功后在本次运行内复用，避免每次翻页都做 3s 超时探测
     private string? _connectedServiceId;
+
+    // 列表数据短时缓存（慢网下避免反复重拉，60s 后自动失效）
+    private readonly TtlCache<string, List<ArtistIndex>> _artistsCache = new(TimeSpan.FromSeconds(60));
+    private readonly TtlCache<string, List<Album>> _albumsCache = new(TimeSpan.FromSeconds(60));
+    private readonly TtlCache<string, List<Playlist>> _playlistsCache = new(TimeSpan.FromSeconds(60));
+
+    private async Task<List<ArtistIndex>> GetArtistsCachedAsync()
+    {
+        var key = AppServices.GetCurrentService()?.Id ?? "";
+        if (_artistsCache.TryGet(key, out var v)) return v;
+        var list = await Music!.GetArtistsAsync();
+        _artistsCache.Set(key, list);
+        return list;
+    }
+
+    private async Task<List<Album>> GetAlbumListCachedAsync(string type, int size, int offset)
+    {
+        var key = $"{AppServices.GetCurrentService()?.Id}|{type}|{size}|{offset}";
+        if (_albumsCache.TryGet(key, out var v)) return v;
+        var list = await Music!.GetAlbumListAsync(type, size, offset);
+        _albumsCache.Set(key, list);
+        return list;
+    }
+
+    private async Task<List<Playlist>> GetPlaylistsCachedAsync()
+    {
+        var key = AppServices.GetCurrentService()?.Id ?? "";
+        if (_playlistsCache.TryGet(key, out var v)) return v;
+        var list = await Music!.GetPlaylistsAsync();
+        _playlistsCache.Set(key, list);
+        return list;
+    }
+
+    /// <summary>限制并发地展开多个项目（避免 N+1 请求在慢网下一起打出去拖垮网络）。</summary>
+    private static async Task<T[]> WhenAllLimitedAsync<TItem, T>(IReadOnlyList<TItem> items, Func<TItem, Task<T>> fetch, int maxConcurrency = 4)
+    {
+        var results = new T[items.Count];
+        using var sem = new SemaphoreSlim(maxConcurrency);
+        var runners = Enumerable.Range(0, items.Count).Select(async i =>
+        {
+            await sem.WaitAsync();
+            try { results[i] = await fetch(items[i]); }
+            finally { sem.Release(); }
+        });
+        await Task.WhenAll(runners);
+        return results;
+    }
 
     private async Task<bool> EnsureConnectedAsync()
     {
@@ -168,7 +216,7 @@ public sealed class CefPageDataProvider
         if (!await EnsureConnectedAsync())
             return new { status = "连接失败" };
 
-        var albums = await music.GetAlbumListAsync("alphabetical", pageSize, (page - 1) * pageSize);
+        var albums = await GetAlbumListCachedAsync("alphabetical", pageSize, (page - 1) * pageSize);
         return new
         {
             albums = albums.Select(a => AlbumDto(a)).ToArray(),
@@ -208,7 +256,7 @@ public sealed class CefPageDataProvider
         if (music is null || !await EnsureConnectedAsync())
             return new { artists = Array.Empty<object>(), groups = Array.Empty<object>(), status = "未配置/连接失败" };
 
-        var indexes = await music.GetArtistsAsync();
+        var indexes = await GetArtistsCachedAsync();
 
         // 分组导航：字母 + 起始偏移（供右侧 A-Z 快速跳转）
         var groups = new List<Dictionary<string, object?>>();
@@ -251,7 +299,7 @@ public sealed class CefPageDataProvider
         if (music is null || !await EnsureConnectedAsync())
             return new { artists = Array.Empty<object>() };
 
-        var indexes = await music.GetArtistsAsync();
+        var indexes = await GetArtistsCachedAsync();
         var artists = indexes
             .SelectMany(idx => idx.Artists)
             .Skip(offset)
@@ -273,7 +321,7 @@ public sealed class CefPageDataProvider
         if (music is null || !await EnsureConnectedAsync())
             return null;
 
-        var all = await music.GetArtistsAsync();
+        var all = await GetArtistsCachedAsync();
         var artist = all.SelectMany(i => i.Artists).FirstOrDefault(a => a.Id == id);
         if (artist is null) return null;
 
@@ -314,8 +362,8 @@ public sealed class CefPageDataProvider
             return new { songs = Array.Empty<object>(), status = "未配置/连接失败" };
 
         // Gonic 无「全部歌曲」端点：分页拉最新专辑，并行获取详情展开歌曲
-        var albums = await music.GetAlbumListAsync("newest", pageSize, (page - 1) * pageSize);
-        var details = await Task.WhenAll(albums.Select(a => music.GetAlbumAsync(a.Id)));
+        var albums = await GetAlbumListCachedAsync("newest", pageSize, (page - 1) * pageSize);
+        var details = await WhenAllLimitedAsync(albums, a => music.GetAlbumAsync(a.Id));
         var flattened = new List<Song>();
         foreach (var d in details)
         {
@@ -338,7 +386,7 @@ public sealed class CefPageDataProvider
         if (music is null || !await EnsureConnectedAsync())
             return new { playlists = Array.Empty<object>() };
 
-        var playlists = await music.GetPlaylistsAsync();
+        var playlists = await GetPlaylistsCachedAsync();
         return new
         {
             playlists = playlists.Select(p => new Dictionary<string, object?>
@@ -385,7 +433,7 @@ public sealed class CefPageDataProvider
         // 若 starred 为空，尝试随机兜底（部分服务不支持）
         if (songs.Count == 0)
         {
-            var starredPlaylist = (await music.GetPlaylistsAsync()).FirstOrDefault(p =>
+            var starredPlaylist = (await GetPlaylistsCachedAsync()).FirstOrDefault(p =>
                 p.Name.Contains("喜欢", StringComparison.OrdinalIgnoreCase) ||
                 p.Name.Contains("Starred", StringComparison.OrdinalIgnoreCase));
             if (starredPlaylist is not null)

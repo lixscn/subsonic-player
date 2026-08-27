@@ -98,6 +98,15 @@ public enum BASSError : int
     Unknown = -1,
 }
 
+/// <summary>BASS 全局配置项（用于网络缓冲等）。</summary>
+public enum BASSConfig : uint
+{
+    NetBuffer = 12,            // 网络缓冲，ms（默认约 500）
+    NetPrebuf = 14,            // 起播前预缓冲：0=全缓冲 1=按需 -1=缓冲一份
+    NetConnectTimeout = 25,    // 连接超时，ms（默认 30s）
+    NetReadTimeout = 26,       // 读超时，ms（默认 30s）
+}
+
 /// <summary>BASS 原生 P/Invoke（仅基础播放所需函数）。</summary>
 internal static class BassNative
 {
@@ -105,6 +114,9 @@ internal static class BassNative
 
     [DllImport(Lib, EntryPoint = "BASS_Init")]
     public static extern bool BASS_Init(int device, int freq, BASSInit flags, IntPtr win, IntPtr clsid);
+
+    [DllImport(Lib, EntryPoint = "BASS_SetConfig")]
+    public static extern bool BASS_SetConfig(BASSConfig config, int value);
 
     [DllImport(Lib, EntryPoint = "BASS_StreamCreateURL", CharSet = CharSet.Ansi)]
     public static extern int BASS_StreamCreateURL(
