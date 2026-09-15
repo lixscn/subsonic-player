@@ -340,3 +340,46 @@
 - NAS：`ssh NAS`（config 里指向 NAS 的 Tailscale 地址），局域网亦可直接连 NAS 的 LAN 地址；`ffprobe`/`docker` 都有。
 - **从受限环境启动客户端会无声崩掉**（写 `%APPDATA%\subsonic-player` 被拒 ⇒ 连日志都写不出来，进程直接没）。
 - 删曲库文件后要**在 music-tag-web 里重扫**，否则库内留下 `stream` 返回 404 的幽灵条目（客户端会弹播放失败提示）。
+
+
+## 2026-09-15 会话（下半场）：服务端曲库大修 + 二轮指纹去重
+
+### 1. 症状与根因
+- 客户端「同一首歌 4 行」「点开播放的是别的声音」不是客户端 bug，是 **music-tag-web 数据库与磁盘脱钩**：
+  - 09-10 21:2x 一次重导入（行号 ~4700-5099）与文件带 `_202609102124xx` 时间戳；
+  - 09-15 13:36 一次「去时间戳重命名 + fix-dbpaths 模糊修路径」把 `Track.path` 写到了错误文件上，
+    **导致 18 组「多条曲目共用一个 path」、146 条曲目指向不存在的文件**；`fix-fuzzy` 自动修了 3 条、留 49 条歧义。
+- 线索：`/vol1/1000/runtime/fix-renamed-20260915-133644.log`、`fix-dbpaths-20260915-133704.log`、
+  `fix-fuzzy-20260915-134352.log`，以及 `music_tables-backup-20260915-1346*.sql`。
+
+### 2. 关键坑（务必记住）
+- **`Track.path` 存的是容器内绝对路径** `/app/media/<相对路径>`；`path_hash = sha256(path)`（UTF-8，无盐）。
+  **写库时忘了补 `/app/media` 前缀 → 16 行变成相对路径**，我在同一会话里踩了一次、又修回来了。
+- **`path_hash` 有唯一索引**；`Album.full_text`、`Artist.full_text` 也有**唯一索引** ⇒ 新建专辑/艺术家必须先
+  生成唯一 `full_text`（约定 `<name>` / `<name>-<n>`）。`Track` 没有 `path` 唯一索引 ⇒ 脏数据能写进去。
+- `ImportMusic.diagnose_duplicate_paths()` 与 `fix_all_artist_issues()` 在 **MySQL 后端直接 `NotImplementedError`**
+  （`user/applications` 是 Cython 编译的 `.so`，`inspect.getsource` 拿不到源码），只能自己写 ORM 脚本。
+- **容器自带 ffmpeg 没有 chromaprint muxer**（`Unrecognized option 'fp_format'`），但 **NAS 宿主机 `/usr/bin/ffmpeg`
+  8.1.1 有**。所以指纹要在宿主机跑：容器导出候选清单（`/app/media/...` → `/vol1/@team/public/music/...`）→
+  宿主机 `ffmpeg -t 150 -f chromaprint -fp_format base64 -` 出指纹（~0.6s/首）→ 回容器执行删除。
+- ffmpeg chromaprint 输出是 **URL-safe 无填充 base64**，标准 `b64decode` 会 `Incorrect padding`，必须
+  `replace('-','+').replace('_','/')` 再补 `=`。
+- **同名 ≠ 重复**：`loose(artist)+loose(title)` 分组后，只有 **指纹完全一致 + 时长差 ≤2s** 才算同一份录音。
+  实测 337 个候选文件里，指纹完全一致 83 对，相似度 0.30~1.0 只有 1 对（0.73，低码率转码版，已清），
+  其余同组文件相似度 <0.30 ⇒ 是不同录音（Live / 重编曲 / 不同年份版本），**必须保留**。
+- 指纹只覆盖前 150s ⇒ **必须加时长校验**，否则「同前奏、不同长度」的两个版本会被误判成重复。
+- 判「保留哪一份」的优先级：目录不是 `未知/未知专辑/unnamed` > 文件名无 `_时间戳` > 同目录文件数多 >
+  无损/DSD 优先 > 码率高 > 体积大。
+- music-tag-web 的 Subsonic 认证凭据在 **`user.UserProfile.subsonic_api_token`**（`auth.User` 上**没有**字段）。
+  直接用 `u=<user>&p=<token>` 走 `http://127.0.0.1:8002/rest/…` 就能端到端验证。
+- `settings.CACHES` 是 **DummyCache**（无 Django 缓存层），所以改库后 REST 立即生效；客户端那边要清
+  `%APPDATA%\subsonic-player\cef-cache`。
+- **`Archive/` 之外不要删 `music/attachments/`**；`music/.cache/`（100 文件/393MB）是 music-tag-web 的
+  **转码缓存**，转码关掉后就是垃圾，可以直接删。
+
+### 3. 复用脚本（工作区 `.audit/`，已 gitignore）
+`dump-state.py`（导出 DB+磁盘+ffprobe 全量）→ `plan2.py`（多轮证据匹配）+ `build_apply.py` →
+`fixdb.py`（改路径/删行/改名，带 JSON 备份）→ `importfree.py`（补导入 + 聚合刷新）→
+`repair2.py`（专辑艺术家重绑/同名合并）→ `finalize.py`/`repair3.py` →
+`dedup2a.py`+`dedup2b.py`+`sim2.py`（指纹去重）→ `apply_host.py`+`apply_container.py` →
+`verify_final.py`（磁盘↔数据库双向核对）。**验收脚本 `verify_final.py` 是这套流程的收口，必须跑。**
