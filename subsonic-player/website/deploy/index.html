@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Subsonic Player — 自托管音乐播放器（Windows / Android 客户端下载）</title>
+<meta name="description" content="Subsonic Player 是面向 NAS 自托管音乐服务的专业播放器：支持 Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / 群晖 AudioStation，提供曲库浏览、智能推荐、10 段 EQ、卡拉OK 滚动歌词、Gapless 无缝播放与淡入淡出，并有 Windows 桌面版与 Android 原生客户端，免费开源（MIT）。">
+<meta name="keywords" content="Subsonic Player,Subsonic 播放器,Navidrome 客户端,Gonic,Jellyfin 音乐,自托管音乐,NAS 音乐播放器,开源音乐播放器,Android 音乐播放器,Windows 音乐播放器,卡拉OK歌词,Gapless 无缝播放,EQ 均衡器">
+<meta name="author" content="lixscn">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#0e1116">
+<link rel="canonical" href="https://www.lixs.fun/">
+<!-- 多语言：中文为 x-default -->
+<link rel="alternate" hreflang="zh-CN" href="https://www.lixs.fun/">
+<link rel="alternate" hreflang="en" href="https://www.lixs.fun/en/">
+<link rel="alternate" hreflang="x-default" href="https://www.lixs.fun/">
+
+<!-- Open Graph / 社交分享 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Subsonic Player">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:title" content="Subsonic Player — 自托管音乐播放器（Windows / Android）">
+<meta property="og:description" content="为 NAS 上的 Subsonic / Navidrome / Gonic / Jellyfin 打造的专业播放器：曲库浏览、智能推荐、10 段 EQ、卡拉OK 歌词、Gapless 无缝播放。免费开源，提供 Windows 与 Android 客户端。">
+<meta property="og:url" content="https://www.lixs.fun/">
+<meta property="og:image" content="https://www.lixs.fun/assets/og-cover.jpg">
+<meta property="og:image:width" content="1120">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Subsonic Player — 自托管音乐播放器（Windows / Android）">
+<meta name="twitter:description" content="为 NAS 上的 Subsonic / Navidrome / Gonic / Jellyfin 打造的专业播放器，免费开源。">
+<meta name="twitter:image" content="https://www.lixs.fun/assets/og-cover.jpg">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/og-cover.jpg">
+<link rel="preload" as="image" href="/assets/desktop.jpg">
+<link rel="stylesheet" href="/styles.css">
+
+<!-- 结构化数据：软件本体 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Subsonic Player",
+  "alternateName": "Subsonic Player for Android",
+  "description": "面向 NAS 自托管音乐服务的专业播放器，支持 Subsonic / OpenSubsonic 兼容服务（Navidrome、Gonic、Jellyfin）、Emby、Plex 与群晖 AudioStation。",
+  "applicationCategory": "MultimediaApplication",
+  "applicationSubCategory": "音乐播放器",
+  "operatingSystem": "Windows 10/11, Android 10+",
+  "softwareVersion": "1.1.0",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "inLanguage": "zh-CN",
+  "url": "https://www.lixs.fun/",
+  "downloadUrl": "https://www.lixs.fun/#download",
+  "codeRepository": "https://github.com/lixscn/subsonic-player",
+  "screenshot": "https://www.lixs.fun/assets/desktop.jpg",
+  "author": { "@type": "Person", "name": "lixscn" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
+  "featureList": [
+    "艺术家 / 专辑 / 歌曲三级浏览与封面墙",
+    "随机推荐与基于收藏偏好的智能推荐",
+    "10 段图形 EQ 与 DSP 音效",
+    "卡拉OK 式滚动歌词（服务端 + LRCLIB + 网易云兜底）",
+    "Gapless 无缝播放与 0-15 秒交叉淡入淡出",
+    "Android 后台播放与通知栏、锁屏媒体控制",
+    "多服务器配置与内外网地址自动切换"
+  ]
+}
+</script>
+<!-- 结构化数据：站点与常见问题 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "Subsonic Player",
+      "url": "https://www.lixs.fun/",
+      "inLanguage": "zh-CN",
+      "publisher": { "@type": "Person", "name": "lixscn" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Subsonic Player 是免费的吗？",
+          "acceptedAnswer": { "@type": "Answer", "text": "客户端本身完全免费且开源（MIT 协议），源代码托管在 GitHub。音频引擎 BASS 系列为 Un4seen 产品，个人非商业使用免费。" }
+        },
+        {
+          "@type": "Question",
+          "name": "支持哪些音乐服务器？",
+          "acceptedAnswer": { "@type": "Answer", "text": "原生支持 Subsonic / OpenSubsonic 协议（含 Navidrome、Gonic、Jellyfin 等兼容实现），并额外支持 Emby、Plex 与群晖 AudioStation。" }
+        },
+        {
+          "@type": "Question",
+          "name": "Windows 版为什么体积比较大？",
+          "acceptedAnswer": { "@type": "Answer", "text": "桌面版内置了 Chromium（CEF）用于渲染界面，并且自带 .NET 运行时，因此无需另外安装任何环境，解压即用。" }
+        },
+        {
+          "@type": "Question",
+          "name": "Android 版为什么有些歌放不出来？",
+          "acceptedAnswer": { "@type": "Answer", "text": "Android 版使用系统解码器，支持 mp3 / m4a(AAC) / FLAC / WAV / OGG。若服务端不做转码，则 DSD(.dsf)、APE、WavPack 等格式无法播放。" }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+      <span>Subsonic Player</span>
+    </a>
+    <nav class="site-nav" aria-label="主导航">
+      <a href="#features">功能</a>
+      <a href="#screenshots">截图</a>
+      <a href="#download">下载</a>
+      <a href="#servers">支持的服务器</a>
+      <a href="#faq">常见问题</a>
+      <a href="/en/" hreflang="en" lang="en">EN</a>
+      <a class="ghost" href="https://github.com/lixscn/subsonic-player" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">为 NAS 自托管音乐而生</p>
+        <h1>Subsonic Player<br><span class="grad">桌面与手机上的专业音乐播放器</span></h1>
+        <p class="lead">
+          连接你自己的音乐服务器（<strong>Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / 群晖 AudioStation</strong>），
+          享受 Roon 风格的浏览体验、10 段 EQ、卡拉OK 滚动歌词、Gapless 无缝播放。桌面版与 Android 原生客户端，<strong>免费开源</strong>。
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/downloads/SubsonicPlayer-win-x64.zip" download>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 5.5 10.5 4.5v7H3v-6zm0 13 7.5 1v-6.9H3v5.9zm9 1.2L21 21V12.6h-9v7.1zm0-15.4v7.2h9V3l-9 1.3z"/></svg>
+            下载 Windows 版
+          </a>
+          <a class="btn" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M17.6 9.5 19 7.1a.4.4 0 0 0-.7-.4l-1.4 2.5a8.6 8.6 0 0 0-7.8 0L7.7 6.7a.4.4 0 0 0-.7.4l1.4 2.4A8.2 8.2 0 0 0 4 16h16a8.2 8.2 0 0 0-4.4-6.5zM9 13.5a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8zm6 0a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+            下载 Android 版
+          </a>
+          <a class="btn btn-ghost-btn" href="https://github.com/lixscn/subsonic-player" rel="noopener">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.93.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.85-2.35 4.7-4.58 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></svg>
+            查看源码
+          </a>
+        </div>
+        <p class="meta-line">
+          Windows 10/11 x64 · 解压即用（内置 Chromium，无需装运行库）　|　Android 10+ · APK 直装　|　MIT 开源
+        </p>
+      </div>
+      <div class="hero-shot">
+        <img src="/assets/desktop.jpg" width="1600" height="900"
+             alt="Subsonic Player Windows 桌面版界面：左侧导航（发现、正在播放、专辑、艺术家、歌曲、歌单、风格、收藏、历史、书签、搜索）与随机推荐列表" fetchpriority="high">
+      </div>
+    </div>
+  </section>
+
+  <!-- 功能 -->
+  <section id="features" class="section">
+    <div class="wrap">
+      <h2>功能一览</h2>
+      <p class="section-sub">桌面端能力全，移动端按竖屏重做 —— 同一套曲库，两种形态。</p>
+      <div class="cards">
+        <article class="card">
+          <h3>曲库浏览与发现</h3>
+          <p>艺术家 / 专辑 / 歌曲三级浏览、封面墙、全局搜索；发现页提供随机推荐与<strong>基于收藏偏好与流派亲和的智能推荐</strong>，还有最近添加、常听、高分、按流派与年代浏览。</p>
+        </article>
+        <article class="card">
+          <h3>播放与音效</h3>
+          <p>HTTP 流式播放、队列管理、顺序 / 随机 / 列表循环 / 单曲循环；<strong>Gapless 无缝播放与 0–15 秒交叉淡入淡出</strong>；10 段图形 EQ（摇滚 / 流行 / 古典 / 人声 / 重低音预设，可导入导出）与混响、回声、合唱、压缩器等 DSP。</p>
+        </article>
+        <article class="card">
+          <h3>卡拉OK 歌词</h3>
+          <p>优先读取服务端同步歌词，失败时并行回退 <strong>LRCLIB 与网易云</strong>；当前行放大高亮、前后行渐隐的滚动效果，并做本地缓存，二次打开秒出。</p>
+        </article>
+        <article class="card">
+          <h3>多协议兼容</h3>
+          <p>原生 Subsonic / OpenSubsonic（Navidrome、Gonic、Jellyfin 等），并额外支持 <strong>Emby、Plex、群晖 AudioStation</strong>；可配置多个服务器，内网优先、外网自动回退。</p>
+        </article>
+        <article class="card">
+          <h3>媒体管理</h3>
+          <p>歌单增删改、添加到歌单、收藏（红心）、1–5 星评分、分享链接、下载原文件；播放历史与 scrobble 上报，播放队列可云端同步。</p>
+        </article>
+        <article class="card">
+          <h3>Android 原生客户端</h3>
+          <p>纯原生实现，<strong>后台播放 + 通知栏与锁屏控制 + 耳机按键 + 音频焦点</strong>；底部导航与全屏播放页按手机竖屏重做，支持播放位置记忆与断点续播。</p>
+        </article>
+        <article class="card">
+          <h3>主题与个性化</h3>
+          <p>6 套内置主题（深邃黑 / 月光白 / 森林绿 / 午夜蓝 / 落日橙 / 玫瑰紫）与多套强调色，深浅色随主题一键切换。</p>
+        </article>
+        <article class="card">
+          <h3>隐私与自托管</h3>
+          <p>没有账号体系、没有云端曲库：所有数据都在你自己的服务器上。客户端凭据加密存储（Windows DPAPI / Android KeyStore），<strong>不硬编码、不上传</strong>。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 截图 -->
+  <section id="screenshots" class="section alt">
+    <div class="wrap">
+      <h2>界面截图</h2>
+      <p class="section-sub">上：Windows 桌面版。下：Android 客户端（发现、专辑墙、正在播放与歌词）。</p>
+      <figure class="shot-wide">
+        <img src="/assets/desktop.jpg" width="1600" height="900" loading="lazy"
+             alt="Windows 桌面版：深色界面，左侧功能导航，中间为随机推荐歌曲列表">
+        <figcaption>Windows 桌面版 · Roon 风格 HTML 界面（Chromium 渲染）</figcaption>
+      </figure>
+      <div class="shot-row">
+        <figure>
+          <img src="/assets/android-home.jpg" width="420" height="887" loading="lazy" alt="Android 客户端发现页：问候语、快捷入口、最近添加与常听专辑横滑卡片">
+          <figcaption>发现页</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/android-albums.jpg" width="420" height="864" loading="lazy" alt="Android 客户端专辑网格：三列封面墙与排序标签">
+          <figcaption>专辑封面墙</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/android-player.jpg" width="420" height="864" loading="lazy" alt="Android 客户端正在播放页：大封面、进度条、播放控制与歌词标签">
+          <figcaption>正在播放</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/android-lyrics.jpg" width="420" height="887" loading="lazy" alt="Android 客户端卡拉OK 滚动歌词：当前行高亮放大">
+          <figcaption>卡拉OK 歌词</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 下载 -->
+  <section id="download" class="section">
+    <div class="wrap">
+      <h2>下载</h2>
+      <p class="section-sub">全部免费。Windows 版解压即用；Android 版为 APK，允许「安装未知来源应用」后直接安装。</p>
+      <div class="dl-grid">
+        <article class="dl-card">
+          <h3>Windows 桌面版</h3>
+          <p class="dl-ver">v1.1.0 · x64 · 自包含</p>
+          <ul>
+            <li>支持 Windows 10 / 11（64 位）</li>
+            <li>内置 Chromium 界面与 .NET 运行时，<strong>无需另外安装环境</strong></li>
+            <li>系统托盘、迷你播放器浮窗、任务栏媒体控制、全局快捷键</li>
+          </ul>
+          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-win-x64.zip" download>下载 Windows 版（约 275 MB）</a>
+          <p class="hint">解压后运行 <code>SubsonicPlayer.exe</code>。首次使用在「设置 → 音乐服务器」填写地址与账号。</p>
+        </article>
+        <article class="dl-card">
+          <h3>Android 客户端</h3>
+          <p class="dl-ver">v0.1.0 · minSdk 29（Android 10+）</p>
+          <ul>
+            <li>后台播放 + 通知栏 / 锁屏控制，耳机按键与音频焦点完整支持</li>
+            <li>原生界面：底部导航、迷你播放条、全屏播放页（歌词 / 队列）</li>
+            <li>支持内外网双地址，出门自动走域名（HTTPS）</li>
+          </ul>
+          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>下载 Android 版（约 160 KB）</a>
+          <p class="hint">APK 为自签名，安装时若提示「未知来源」请选择允许。仅支持 mp3 / m4a / FLAC / WAV / OGG（DSD、APE 等服务端不转码时无法播放）。</p>
+        </article>
+      </div>
+      <p class="dl-note">
+        也可以从 GitHub Releases 获取：<a href="https://github.com/lixscn/subsonic-player/releases" rel="noopener">github.com/lixscn/subsonic-player/releases</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- 支持的服务器 -->
+  <section id="servers" class="section alt">
+    <div class="wrap">
+      <h2>支持的音乐服务器</h2>
+      <table class="table">
+        <thead><tr><th>服务</th><th>协议</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>Subsonic / OpenSubsonic</td><td>原生</td><td>token+salt 或密码认证，按服务端能力自动适配</td></tr>
+          <tr><td>Navidrome / Gonic / Jellyfin</td><td>Subsonic 兼容</td><td>共用同一客户端，设置里选择对应类型即可</td></tr>
+          <tr><td>Emby</td><td>原生 JSON REST</td><td>独立的 Emby 客户端实现</td></tr>
+          <tr><td>Plex</td><td>原生 XML</td><td>独立的 Plex 客户端实现</td></tr>
+          <tr><td>群晖 AudioStation</td><td>原生</td><td>SYNO.AudioStation.* 接口</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" class="section">
+    <div class="wrap">
+      <h2>常见问题</h2>
+      <dl class="faq">
+        <dt>Subsonic Player 是免费的吗？</dt>
+        <dd>客户端完全免费且开源（<a href="https://github.com/lixscn/subsonic-player" rel="noopener">MIT 协议</a>）。音频引擎 BASS 系列为 Un4seen 产品，个人非商业使用免费，商用需另行授权。</dd>
+
+        <dt>支持哪些音乐服务器？</dt>
+        <dd>原生支持 Subsonic / OpenSubsonic 协议（Navidrome、Gonic、Jellyfin 等兼容实现），并额外支持 Emby、Plex 和群晖 AudioStation；可以配置多个服务器并一键切换。</dd>
+
+        <dt>Windows 版为什么体积比较大？</dt>
+        <dd>桌面版内置 Chromium（CEF）用于渲染界面，并自带 .NET 运行时，所以不需要你另外安装任何环境 —— 解压就能用。</dd>
+
+        <dt>Android 版为什么有些歌放不出来？</dt>
+        <dd>Android 版使用系统解码器，支持 mp3 / m4a(AAC) / FLAC / WAV / OGG。如果服务端不做转码，DSD（.dsf）、APE、WavPack 等格式就无法播放。</dd>
+
+        <dt>数据会被上传到云端吗？</dt>
+        <dd>不会。客户端没有账号体系，所有请求都直接发往你自己的服务器；服务器密码加密保存在本机（Windows DPAPI、Android KeyStore）。</dd>
+
+        <dt>支持歌词吗？</dt>
+        <dd>支持。优先使用服务端同步歌词，取不到时自动回退 LRCLIB 与网易云，并做本地缓存；桌面与 Android 端都有卡拉OK 式滚动高亮。</dd>
+      </dl>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <strong>Subsonic Player</strong>
+      <p>面向 NAS 自托管音乐服务的播放器 · Windows / Android</p>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/lixscn/subsonic-player" rel="noopener">GitHub 仓库</a>
+      <a href="https://github.com/lixscn/subsonic-player/releases" rel="noopener">发布版本</a>
+      <a href="/sitemap.xml">站点地图</a>
+      <a href="/en/" hreflang="en" lang="en">English</a>
+    </div>
+  </div>
+  <div class="wrap copyright">
+    <p>MIT License © 2026 lixscn · 音频引擎 BASS 系列版权归 Un4seen Developments 所有</p>
+  </div>
+</footer>
+
+</body>
+</html>

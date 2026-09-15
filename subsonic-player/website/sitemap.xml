@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- 中文首页（x-default） -->
+  <url>
+    <loc>https://www.lixs.fun/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://www.lixs.fun/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.lixs.fun/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://www.lixs.fun/"/>
+    <image:image>
+      <image:loc>https://www.lixs.fun/assets/desktop.jpg</image:loc>
+      <image:title>Subsonic Player Windows 桌面版界面</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.lixs.fun/assets/android-home.jpg</image:loc>
+      <image:title>Subsonic Player Android 客户端发现页</image:title>
+    </image:image>
+  </url>
+
+  <!-- English home page -->
+  <url>
+    <loc>https://www.lixs.fun/en/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://www.lixs.fun/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.lixs.fun/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://www.lixs.fun/"/>
+    <image:image>
+      <image:loc>https://www.lixs.fun/assets/desktop.jpg</image:loc>
+      <image:title>Subsonic Player for Windows</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.lixs.fun/assets/android-home.jpg</image:loc>
+      <image:title>Subsonic Player for Android</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.lixs.fun/#download</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.lixs.fun/#features</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.lixs.fun/#faq</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+</urlset>

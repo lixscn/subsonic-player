@@ -7,3 +7,9 @@ debug.log
 dist/
 publish/
 *.zip
+
+# 本地曲库审计产物（含整份曲库清单：歌名/歌手/服务端路径 ⇒ 绝不可入库）
+.audit/
+
+# 误建的空占位文件
+/app.js

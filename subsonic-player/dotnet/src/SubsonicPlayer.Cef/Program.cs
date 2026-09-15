@@ -1,0 +1,127 @@
+using Avalonia;
+using System;
+using System.IO;
+using Xilium.CefGlue;
+using Xilium.CefGlue.Common;
+using Xilium.CefGlue.Common.Shared;
+using SubsonicPlayer.Services;
+
+namespace SubsonicPlayer;
+
+sealed class Program
+{
+    // Initialization code. Don't use any Avalonia, third-party APIs or any
+    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
+    // yet and stuff might break.
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        // 抬高线程池最小工作线程数。
+        //
+        // 每个 JS→C# 数据请求（CefUiBridge.InvokeData）会在**一个线程池线程上同步等待**网络返回，
+        // 而默认最小线程数 = CPU 核数；一旦服务器变慢/挂起，一个曲库页预加载就能同时占满
+        // 好几个线程，之后新任务只能排队等 .NET 每秒注入 1 个线程 —— 表现就是
+        // 「界面像卡住、连关闭/最小化按钮都要等好几秒才响应」。
+        // 把下限抬到 64，突发并发立刻有线程可用（这些线程绝大多数时间在等 I/O，不烧 CPU）。
+        System.Threading.ThreadPool.GetMinThreads(out var minWorkers, out var minIo);
+        System.Threading.ThreadPool.SetMinThreads(Math.Max(minWorkers, 64), Math.Max(minIo, 64));
+
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    // Avalonia configuration, don't remove; also used by visual designer.
+    public static AppBuilder BuildAvaloniaApp()
+        => AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+#if DEBUG
+            .WithDeveloperTools()
+#endif
+            .WithInterFont()
+            .LogToTrace()
+            .AfterSetup(_ =>
+            {
+                try
+                {
+                    // CEF(Chromium) 原生永远不打包进 exe，全部外置为目录里的文件：
+                    //   - resources.pak / icudtl.dat / snapshot_blob.bin / chrome_*.pak / libcef.dll 在 exe 旁（ResourcesDirPath）
+                    //   - locales\*.pak 在 exe 旁目录（LocalesDirPath，可能是根 locales 或 runtimes\*\native\locales）
+                    //   - CefGlueBrowserProcess 子进程
+                    // 单文件(托管)模式下自动探测不可靠，这里显式告诉 CEF 去外置目录找。
+                    var baseDir = AppContext.BaseDirectory;
+                    var localesDir = ResolveLocalesDir(baseDir);
+                    LogInit($"--- CEF init start --- baseDir={baseDir} localesDir={localesDir}");
+                    LogInit($"libcef exists={File.Exists(Path.Combine(baseDir, "libcef.dll"))} resources={File.Exists(Path.Combine(baseDir, "resources.pak"))} subprocess={File.Exists(Path.Combine(baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"))}");
+
+                    CefRuntimeLoader.Initialize(
+                        new CefSettings
+                        {
+                            RootCachePath = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                "subsonic-player", "cef-cache"),
+                            LogFile = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                "subsonic-player", "cef.log"),
+                            LogSeverity = CefLogSeverity.Info,
+                            WindowlessRenderingEnabled = true,
+                            // 深色背景，避免 OSR 页面加载前的白闪（与 OutSystems 一致）
+                            BackgroundColor = new CefColor(0xFF141416u),
+                            // 采集未捕获 JS 异常栈深，便于排查
+                            UncaughtExceptionStackSize = 32,
+                            ResourcesDirPath = baseDir,
+                            LocalesDirPath = localesDir,
+                            BrowserSubprocessPath = Path.Combine(
+                                baseDir, "CefGlueBrowserProcess", "Xilium.CefGlue.BrowserProcess.exe"),
+                        },
+                        // 不传任何 GPU 参数（之前加 swiftshader 被确认方向不对；非 GPU 问题）。
+                        Array.Empty<System.Collections.Generic.KeyValuePair<string, string>>(),
+                        new[] { AppScheme.Build() });
+
+                    // 退出时干净关闭 CEF（释放子进程/缓存，避免残留；与 OutSystems 一致）
+                    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+                    {
+                        try { CefRuntime.Shutdown(); } catch { }
+                    };
+
+                    LogInit("--- CEF init OK ---");
+                }
+                catch (Exception ex)
+                {
+                    LogInit("--- CEF init FAILED --- " + ex);
+                    throw;
+                }
+            });
+
+    /// <summary>解析 CEF locales 目录：优先 &lt;base&gt;\locales；否则遍历 &lt;base&gt;\runtimes\*\native\locales。</summary>
+    private static string ResolveLocalesDir(string baseDir)
+    {
+        var direct = Path.Combine(baseDir, "locales");
+        if (Directory.Exists(direct))
+            return direct;
+
+        var runtimes = Path.Combine(baseDir, "runtimes");
+        if (Directory.Exists(runtimes))
+        {
+            foreach (var rid in Directory.GetDirectories(runtimes))
+            {
+                var native = Path.Combine(rid, "native", "locales");
+                if (Directory.Exists(native))
+                    return native;
+            }
+        }
+        return direct; // 找不到就退回根目录 locales（路径非空，CEF 会自行提示）
+    }
+
+    private static void LogInit(string msg)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "subsonic-player");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "cef-init.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {msg}{Environment.NewLine}");
+        }
+        catch { }
+    }
+}

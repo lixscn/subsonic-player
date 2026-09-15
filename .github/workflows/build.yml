@@ -43,15 +43,15 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        working-directory: dotnet
+        working-directory: subsonic-player/dotnet
         run: ${{ matrix.restore }}
 
       - name: Build (compile gate)
-        working-directory: dotnet
+        working-directory: subsonic-player/dotnet
         run: ${{ matrix.build }}
 
       - name: Publish self-contained
-        working-directory: dotnet
+        working-directory: subsonic-player/dotnet
         run: ${{ matrix.publish }}
 
       - name: Upload artifact
@@ -59,8 +59,8 @@ jobs:
         with:
           name: SubsonicPlayer-${{ matrix.rid }}
           path: |
-            dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/${{ matrix.rid }}/
-            dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/CefGlueBrowserProcess/
+            subsonic-player/dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/${{ matrix.rid }}/
+            subsonic-player/dotnet/src/SubsonicPlayer.Cef/bin/Release/${{ matrix.tfm }}/CefGlueBrowserProcess/
           if-no-files-found: ignore
 
   release:

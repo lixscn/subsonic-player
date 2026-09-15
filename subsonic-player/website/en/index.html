@@ -1,0 +1,332 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Subsonic Player — Self-hosted Music Player for Windows &amp; Android</title>
+<meta name="description" content="Subsonic Player is a professional client for your self-hosted music server: Subsonic / OpenSubsonic (Navidrome, Gonic, Jellyfin), Emby, Plex and Synology AudioStation. Library browsing, smart recommendations, 10-band EQ, karaoke lyrics, gapless playback with crossfade. Free and open source (MIT), with Windows desktop and native Android apps.">
+<meta name="keywords" content="Subsonic Player,Subsonic client,Navidrome client,Gonic,Jellyfin music,self-hosted music,NAS music player,open source music player,Android music player,Windows music player,gapless playback,karaoke lyrics,EQ equalizer">
+<meta name="author" content="lixscn">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#0e1116">
+<link rel="canonical" href="https://www.lixs.fun/en/">
+<link rel="alternate" hreflang="zh-CN" href="https://www.lixs.fun/">
+<link rel="alternate" hreflang="en" href="https://www.lixs.fun/en/">
+<link rel="alternate" hreflang="x-default" href="https://www.lixs.fun/">
+
+<!-- Open Graph / social -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Subsonic Player">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:title" content="Subsonic Player — Self-hosted Music Player for Windows &amp; Android">
+<meta property="og:description" content="A professional client for Subsonic / Navidrome / Gonic / Jellyfin on your NAS: library browsing, smart recommendations, 10-band EQ, karaoke lyrics, gapless playback. Free and open source.">
+<meta property="og:url" content="https://www.lixs.fun/en/">
+<meta property="og:image" content="https://www.lixs.fun/assets/og-cover.jpg">
+<meta property="og:image:width" content="1120">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Subsonic Player — Self-hosted Music Player for Windows &amp; Android">
+<meta name="twitter:description" content="A professional client for Subsonic / Navidrome / Gonic / Jellyfin on your NAS. Free and open source.">
+<meta name="twitter:image" content="https://www.lixs.fun/assets/og-cover.jpg">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/og-cover.jpg">
+<link rel="preload" as="image" href="/assets/desktop.jpg">
+<link rel="stylesheet" href="/styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Subsonic Player",
+  "description": "A professional player for self-hosted music servers, supporting Subsonic / OpenSubsonic (Navidrome, Gonic, Jellyfin), Emby, Plex and Synology AudioStation.",
+  "applicationCategory": "MultimediaApplication",
+  "applicationSubCategory": "Music Player",
+  "operatingSystem": "Windows 10/11, Android 10+",
+  "softwareVersion": "1.1.0",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "url": "https://www.lixs.fun/en/",
+  "downloadUrl": "https://www.lixs.fun/en/#download",
+  "codeRepository": "https://github.com/lixscn/subsonic-player",
+  "screenshot": "https://www.lixs.fun/assets/desktop.jpg",
+  "author": { "@type": "Person", "name": "lixscn" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "featureList": [
+    "Artist / album / song browsing with cover wall",
+    "Random picks and preference-based smart recommendations",
+    "10-band graphic EQ and DSP effects",
+    "Karaoke-style scrolling lyrics (server + LRCLIB + NetEase fallback)",
+    "Gapless playback with 0-15s crossfade",
+    "Android background playback with notification and lock-screen controls",
+    "Multiple servers with automatic LAN / WAN address switching"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "Subsonic Player",
+      "url": "https://www.lixs.fun/en/",
+      "inLanguage": "en",
+      "publisher": { "@type": "Person", "name": "lixscn" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is Subsonic Player free?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The client is completely free and open source (MIT), hosted on GitHub. The BASS audio engine is an Un4seen product and is free for personal, non-commercial use." }
+        },
+        {
+          "@type": "Question",
+          "name": "Which music servers are supported?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Native Subsonic / OpenSubsonic support (including Navidrome, Gonic and Jellyfin), plus Emby, Plex and Synology AudioStation." }
+        },
+        {
+          "@type": "Question",
+          "name": "Why is the Windows download so large?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The desktop app bundles Chromium (CEF) for its UI and ships the .NET runtime, so no extra dependencies are required - just unzip and run." }
+        },
+        {
+          "@type": "Question",
+          "name": "Why do some songs not play on Android?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The Android app uses the system decoders and supports mp3, m4a (AAC), FLAC, WAV and OGG. If your server does not transcode, formats such as DSD (.dsf), APE and WavPack cannot be played." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/en/">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+      <span>Subsonic Player</span>
+    </a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
+      <a href="#download">Download</a>
+      <a href="#servers">Servers</a>
+      <a href="#faq">FAQ</a>
+      <a href="/" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <a class="ghost" href="https://github.com/lixscn/subsonic-player" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Built for self-hosted music</p>
+        <h1>Subsonic Player<br><span class="grad">A pro-grade player for desktop and mobile</span></h1>
+        <p class="lead">
+          Connect your own music server (<strong>Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / Synology AudioStation</strong>)
+          and enjoy a Roon-style browsing experience, a 10-band EQ, karaoke-scrolling lyrics and gapless playback.
+          Desktop and native Android apps, <strong>free and open source</strong>.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/downloads/SubsonicPlayer-win-x64.zip" download>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 5.5 10.5 4.5v7H3v-6zm0 13 7.5 1v-6.9H3v5.9zm9 1.2L21 21V12.6h-9v7.1zm0-15.4v7.2h9V3l-9 1.3z"/></svg>
+            Download for Windows
+          </a>
+          <a class="btn" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M17.6 9.5 19 7.1a.4.4 0 0 0-.7-.4l-1.4 2.5a8.6 8.6 0 0 0-7.8 0L7.7 6.7a.4.4 0 0 0-.7.4l1.4 2.4A8.2 8.2 0 0 0 4 16h16a8.2 8.2 0 0 0-4.4-6.5zM9 13.5a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8zm6 0a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+            Download for Android
+          </a>
+          <a class="btn btn-ghost-btn" href="https://github.com/lixscn/subsonic-player" rel="noopener">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.93.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.85-2.35 4.7-4.58 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></svg>
+            View source
+          </a>
+        </div>
+        <p class="meta-line">
+          Windows 10/11 x64 · unzip and run (Chromium bundled, no runtime to install)　|　Android 10+ · direct APK install　|　MIT licensed
+        </p>
+      </div>
+      <div class="hero-shot">
+        <img src="/assets/desktop.jpg" width="1600" height="900"
+             alt="Subsonic Player on Windows: left navigation (Discover, Now Playing, Albums, Artists, Songs, Playlists, Genres, Favorites, History, Bookmarks, Search) and a random recommendations list" fetchpriority="high">
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="section">
+    <div class="wrap">
+      <h2>Features</h2>
+      <p class="section-sub">Full-featured on desktop, reimagined for portrait phones — one library, two shapes.</p>
+      <div class="cards">
+        <article class="card">
+          <h3>Browsing &amp; discovery</h3>
+          <p>Artist / album / song browsing, cover wall and global search. The Discover page offers random picks and <strong>smart recommendations based on your favorites and genre affinity</strong>, plus recently added, most played, top rated, and browsing by genre or decade.</p>
+        </article>
+        <article class="card">
+          <h3>Playback &amp; audio</h3>
+          <p>HTTP streaming, queue management and four play modes. <strong>Gapless playback with 0–15s crossfade</strong> (BASS mixer), a 10-band graphic EQ with presets (rock / pop / classical / vocal / bass boost, import &amp; export) plus reverb, echo, chorus and compressor DSP.</p>
+        </article>
+        <article class="card">
+          <h3>Karaoke lyrics</h3>
+          <p>Synchronized server lyrics first, with a parallel fallback to <strong>LRCLIB and NetEase Cloud Music</strong>. The current line is highlighted and enlarged while neighbours fade — cached locally so lyrics appear instantly next time.</p>
+        </article>
+        <article class="card">
+          <h3>Multi-protocol</h3>
+          <p>Native Subsonic / OpenSubsonic (Navidrome, Gonic, Jellyfin), plus <strong>Emby, Plex and Synology AudioStation</strong>. Configure several servers with LAN-first, WAN-fallback address handling.</p>
+        </article>
+        <article class="card">
+          <h3>Library management</h3>
+          <p>Create, rename and edit playlists, add songs to playlists, favorites (heart), 1–5 star ratings, share links and original-file downloads. Play history with scrobbling and cloud-synced play queues.</p>
+        </article>
+        <article class="card">
+          <h3>Native Android app</h3>
+          <p>A fully native client with <strong>background playback, notification and lock-screen controls, headset buttons and proper audio focus</strong>. Bottom navigation and a full-screen player rebuilt for portrait phones, with resume-where-you-left-off.</p>
+        </article>
+        <article class="card">
+          <h3>Themes</h3>
+          <p>Six built-in themes (Deep Black, Moonlight White, Forest Green, Midnight Blue, Sunset Orange, Rose Purple) with selectable accent colours and instant light/dark switching.</p>
+        </article>
+        <article class="card">
+          <h3>Private by design</h3>
+          <p>No accounts, no cloud library — all data stays on your own server. Credentials are encrypted at rest (Windows DPAPI / Android KeyStore) and <strong>never hard-coded or uploaded</strong>.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="screenshots" class="section alt">
+    <div class="wrap">
+      <h2>Screenshots</h2>
+      <p class="section-sub">Top: the Windows desktop app. Below: the Android client (Discover, album wall, Now Playing and lyrics).</p>
+      <figure class="shot-wide">
+        <img src="/assets/desktop.jpg" width="1600" height="900" loading="lazy"
+             alt="Windows desktop app: dark UI with left navigation and a random recommendations list">
+        <figcaption>Windows desktop app · Roon-style HTML interface rendered by Chromium</figcaption>
+      </figure>
+      <div class="shot-row">
+        <figure>
+          <img src="/assets/android-home.jpg" width="420" height="887" loading="lazy" alt="Android client Discover page with greeting, quick actions and horizontally scrolling album cards">
+          <figcaption>Discover</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/android-albums.jpg" width="420" height="864" loading="lazy" alt="Android client album grid with three columns of cover art and sort chips">
+          <figcaption>Favorites</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/android-player.jpg" width="420" height="864" loading="lazy" alt="Android client Now Playing page with large cover art, seek bar and playback controls">
+          <figcaption>Now Playing</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/android-lyrics.jpg" width="420" height="887" loading="lazy" alt="Android client karaoke-style scrolling lyrics with the current line highlighted">
+          <figcaption>Karaoke lyrics</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="section">
+    <div class="wrap">
+      <h2>Download</h2>
+      <p class="section-sub">Everything is free. The Windows build is a portable zip; the Android build is an APK (allow "install unknown apps" to install).</p>
+      <div class="dl-grid">
+        <article class="dl-card">
+          <h3>Windows desktop</h3>
+          <p class="dl-ver">v1.1.0 · x64 · self-contained</p>
+          <ul>
+            <li>Windows 10 / 11 (64-bit)</li>
+            <li>Chromium UI and .NET runtime bundled — <strong>nothing else to install</strong></li>
+            <li>Tray icon, mini player, taskbar media controls, global hotkeys</li>
+          </ul>
+          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-win-x64.zip" download>Download for Windows (~275 MB)</a>
+          <p class="hint">Unzip and run <code>SubsonicPlayer.exe</code>. On first launch, fill in your server address and account under Settings → Music Server.</p>
+        </article>
+        <article class="dl-card">
+          <h3>Android app</h3>
+          <p class="dl-ver">v0.1.0 · minSdk 29 (Android 10+)</p>
+          <ul>
+            <li>Background playback, notification and lock-screen controls, headset buttons and audio focus</li>
+            <li>Native UI: bottom navigation, mini player, full-screen player with lyrics and queue</li>
+            <li>Separate LAN and WAN addresses — switch to your HTTPS domain automatically when away</li>
+          </ul>
+          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>Download for Android (~160 KB)</a>
+          <p class="hint">The APK is self-signed; allow installation from unknown sources when prompted. Playback supports mp3 / m4a / FLAC / WAV / OGG (DSD and APE cannot be played unless your server transcodes).</p>
+        </article>
+      </div>
+      <p class="dl-note">
+        You can also get builds from GitHub Releases: <a href="https://github.com/lixscn/subsonic-player/releases" rel="noopener">github.com/lixscn/subsonic-player/releases</a>
+      </p>
+    </div>
+  </section>
+
+  <section id="servers" class="section alt">
+    <div class="wrap">
+      <h2>Supported music servers</h2>
+      <table class="table">
+        <thead><tr><th>Service</th><th>Protocol</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Subsonic / OpenSubsonic</td><td>Native</td><td>Token+salt or password auth, adapted to server capabilities</td></tr>
+          <tr><td>Navidrome / Gonic / Jellyfin</td><td>Subsonic-compatible</td><td>Shared client — just pick the matching type in settings</td></tr>
+          <tr><td>Emby</td><td>Native JSON REST</td><td>Dedicated Emby client implementation</td></tr>
+          <tr><td>Plex</td><td>Native XML</td><td>Dedicated Plex client implementation</td></tr>
+          <tr><td>Synology AudioStation</td><td>Native</td><td>SYNO.AudioStation.* endpoints</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="faq" class="section">
+    <div class="wrap">
+      <h2>FAQ</h2>
+      <dl class="faq">
+        <dt>Is Subsonic Player free?</dt>
+        <dd>Yes. The client is free and open source (<a href="https://github.com/lixscn/subsonic-player" rel="noopener">MIT</a>). The BASS audio engine is an Un4seen product, free for personal non-commercial use; commercial use requires a separate license.</dd>
+
+        <dt>Which music servers are supported?</dt>
+        <dd>Native Subsonic / OpenSubsonic support (Navidrome, Gonic, Jellyfin and other compatible servers), plus Emby, Plex and Synology AudioStation. Multiple servers can be configured and switched with one tap.</dd>
+
+        <dt>Why is the Windows download so large?</dt>
+        <dd>The desktop app bundles Chromium (CEF) for its interface and ships the .NET runtime, so you do not need to install anything else — just unzip and run.</dd>
+
+        <dt>Why do some songs not play on Android?</dt>
+        <dd>The Android app relies on system decoders and supports mp3, m4a (AAC), FLAC, WAV and OGG. When your server does not transcode, DSD (.dsf), APE and WavPack files cannot be played.</dd>
+
+        <dt>Is my data uploaded anywhere?</dt>
+        <dd>No. There is no account system: every request goes straight to your own server, and server passwords are encrypted on-device (Windows DPAPI, Android KeyStore).</dd>
+
+        <dt>Does it support lyrics?</dt>
+        <dd>Yes. Synchronized server lyrics are preferred, with automatic fallback to LRCLIB and NetEase Cloud Music, cached locally. Both desktop and Android offer karaoke-style scrolling highlights.</dd>
+      </dl>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <strong>Subsonic Player</strong>
+      <p>A player for self-hosted music servers · Windows / Android</p>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/lixscn/subsonic-player" rel="noopener">GitHub</a>
+      <a href="https://github.com/lixscn/subsonic-player/releases" rel="noopener">Releases</a>
+      <a href="/sitemap.xml">Sitemap</a>
+      <a href="/" hreflang="zh-CN" lang="zh-CN">中文</a>
+    </div>
+  </div>
+  <div class="wrap copyright">
+    <p>MIT License © 2026 lixscn · BASS audio engine © Un4seen Developments</p>
+  </div>
+</footer>
+
+</body>
+</html>

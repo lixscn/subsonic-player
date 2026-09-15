@@ -1,0 +1,108 @@
+/* Subsonic Player 落地页样式 —— 无外部依赖，主题与客户端保持一致的深色调 */
+:root{
+  --bg:#0e1116; --bg-alt:#12161d; --surface:#161b23; --surface-2:#1d232d;
+  --border:#252c37; --text:#f2f4f8; --text-dim:#a3adbb;
+  --text-faint:#6f7987;
+  --accent:#2dd4a7; --accent-2:#fb923c; --accent-ink:#04241b;
+  --radius:14px; --radius-lg:20px;
+  --wrap:1120px;
+  --shadow:0 18px 50px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--surface-2);padding:1px 6px;border-radius:6px;font-size:.9em}
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 20px}
+
+/* 顶栏 */
+.site-header{position:sticky;top:0;z-index:20;background:rgba(14,17,22,.86);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.header-inner{display:flex;align-items:center;justify-content:space-between;height:62px;gap:16px}
+.brand{display:flex;align-items:center;gap:9px;color:var(--text);font-weight:700;letter-spacing:.2px}
+.brand:hover{text-decoration:none}
+.brand svg{color:var(--accent)}
+.site-nav{display:flex;align-items:center;gap:22px;font-size:14.5px}
+.site-nav a{color:var(--text-dim)}
+.site-nav a:hover{color:var(--text);text-decoration:none}
+.site-nav .ghost{border:1px solid var(--border);padding:6px 14px;border-radius:999px;color:var(--text)}
+
+/* Hero */
+.hero{padding:64px 0 40px;background:
+  radial-gradient(1100px 460px at 12% -8%, rgba(45,212,167,.14), transparent 60%),
+  radial-gradient(900px 420px at 92% 6%, rgba(251,146,60,.10), transparent 60%)}
+.hero-grid{display:grid;grid-template-columns:1fr;gap:38px}
+@media(min-width:900px){.hero-grid{grid-template-columns:1.02fr 1.1fr;align-items:center;gap:48px}}
+.eyebrow{margin:0 0 10px;color:var(--accent);font-size:14px;letter-spacing:.14em;text-transform:uppercase}
+.hero h1{margin:0 0 16px;font-size:clamp(30px,5vw,46px);line-height:1.18;letter-spacing:-.5px}
+.hero h1 .grad{background:linear-gradient(92deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent;font-size:.72em}
+.lead{margin:0 0 26px;color:var(--text-dim);font-size:17px;max-width:38em}
+.lead strong{color:var(--text);font-weight:600}
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:999px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-size:15px;font-weight:600;cursor:pointer}
+.btn:hover{text-decoration:none;border-color:#38414f}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover{background:#3ee0b3;border-color:#3ee0b3}
+.btn-ghost-btn{background:transparent}
+.btn.block{display:flex;justify-content:center;width:100%;margin-top:18px}
+.meta-line{margin:0;color:var(--text-faint);font-size:13.5px}
+.hero-shot img{border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:var(--shadow)}
+
+/* 区块 */
+.section{padding:70px 0}
+.section.alt{background:var(--bg-alt);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.section h2{margin:0 0 8px;font-size:clamp(24px,3.2vw,32px);letter-spacing:-.3px}
+.section-sub{margin:0 0 34px;color:var(--text-dim);font-size:16px;max-width:60em}
+
+/* 功能卡片 */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+.card h3{margin:0 0 8px;font-size:17.5px}
+.card p{margin:0;color:var(--text-dim);font-size:15px}
+.card strong{color:var(--text)}
+
+/* 截图 */
+.shot-wide{margin:0 0 22px}
+.shot-wide img{border-radius:var(--radius);border:1px solid var(--border)}
+figcaption{margin-top:10px;color:var(--text-faint);font-size:13.5px;text-align:center}
+.shot-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:18px}
+.shot-row figure{margin:0}
+.shot-row img{border-radius:var(--radius);border:1px solid var(--border);margin:0 auto;width:100%;max-width:250px}
+
+/* 下载 */
+.dl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.dl-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:26px}
+.dl-card h3{margin:0 0 4px;font-size:20px}
+.dl-ver{margin:0 0 14px;color:var(--accent);font-size:13.5px;letter-spacing:.02em}
+.dl-card ul{margin:0;padding-left:20px;color:var(--text-dim);font-size:15px}
+.dl-card li{margin:6px 0}
+.hint{margin:14px 0 0;color:var(--text-faint);font-size:13.5px}
+.dl-note{margin:26px 0 0;color:var(--text-dim);font-size:15px}
+
+/* 表格 */
+.table{width:100%;border-collapse:collapse;font-size:15px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.table th,.table td{padding:13px 16px;text-align:left;border-bottom:1px solid var(--border)}
+.table th{background:var(--surface-2);color:var(--text);font-weight:600}
+.table td{color:var(--text-dim)}
+.table tr:last-child td{border-bottom:0}
+
+/* FAQ */
+.faq{margin:0}
+.faq dt{margin:22px 0 6px;font-weight:600;font-size:16.5px}
+.faq dt:first-child{margin-top:0}
+.faq dd{margin:0;color:var(--text-dim);font-size:15.5px}
+
+/* 页脚 */
+.site-footer{border-top:1px solid var(--border);background:var(--bg-alt);padding:38px 0 26px;font-size:14.5px}
+.footer-inner{display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between;align-items:flex-start}
+.site-footer p{margin:6px 0 0;color:var(--text-faint);font-size:13.5px}
+.footer-links{display:flex;flex-wrap:wrap;gap:20px}
+.footer-links a{color:var(--text-dim)}
+.copyright{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
+.copyright p{margin:0;color:var(--text-faint);font-size:12.5px}
