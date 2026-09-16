@@ -383,3 +383,38 @@
 `repair2.py`（专辑艺术家重绑/同名合并）→ `finalize.py`/`repair3.py` →
 `dedup2a.py`+`dedup2b.py`+`sim2.py`（指纹去重）→ `apply_host.py`+`apply_container.py` →
 `verify_final.py`（磁盘↔数据库双向核对）。**验收脚本 `verify_final.py` 是这套流程的收口，必须跑。**
+
+## 2026-09-16 会话：曲目标题批量错乱的取证与修复
+
+### 症状与根因
+用户报「明天，你好这首歌不对板」。不是路径问题（那已在 09-15 修完），而是**标题被批量覆写**：
+多个不同歌曲的文件被改成同一个名字，`title` 标签同时被写坏。典型 `牛奶咖啡/Lost & Found去寻找/`
+三个文件全叫 `明天，你好`；`尹光` 下 8 个文件全叫 `剑合钗圆`（实为 8 首不同的歌）。
+
+### 最有价值的取证手段（纯本地，不需要网络）
+**文件内嵌 `lyrics` 标签里的 `[ti:...]`/`[ar:...]` 是「标题被覆写之前」抓歌词时留下的真实曲名。**
+把它和「文件名 / 专辑目录名 / 同目录 `.lrc` 旁挂文件 / 官方时长」交叉验证，两个以上来源一致才动手：
+
+- 规则 A：文件名 ≈ lyrics 标题，而 `title` 标签与两者都不符 ⇒ title 用文件名。
+- 规则 B：`title` 标签 == 文件名（说明标签是从名字抄的），且 lyrics ≈ 专辑目录名或存在同名 `.lrc` ⇒ 用 lyrics。
+- **反例（必须记住）**：`Taylor Swift - Paper Rings` 的 lyrics 写 `Paper Hearts`、
+  `Imagine Dragons - Zero` 的 lyrics 写 `Imagine` —— 这两首**时长与标签吻合**，是 lyrics 错了。
+  所以**绝不能只信 lyrics**，必须有第二个独立来源。
+- 还有一类是**噪音 lyrics**（`[ti:June]`、`[ti:77243]`、`[ti:********]`、`[ti:Track 10]`、
+  `[ti:y2002_dj...]`）—— 歌词源抓失败写进去的垃圾，要按正则滤掉，别当成真标题。
+
+### 改写标签的正确姿势
+- `ffmpeg -i in.flac -c copy -map_metadata 0 -metadata title=新名 out.flac`；m4a 追加
+  `-movflags +faststart`（顺带解决服务端 `err=Unstreamable`）。
+- **必须逐个校验音频流 MD5**：`ffmpeg -v error -i F -map 0:a -f md5 -`，改写前后对比，
+  不一致就丢弃临时文件。本次 35/35 一致。
+- `-c copy` 会保留其它标签（lyrics/composer/lyricist）—— 确认过没丢。
+- 只改标签 + 数据库 `Track.name/name_pinyin/name_sort`，**不改文件名**（改名风险已被 09-15 那次
+  事故证明，且客户端显示的是数据库名字，文件名不影响使用）。
+
+### 其它
+- 曲库里有**整族假文件**：`周深/借过一下/` 5 个文件的 `lyrics[ar]` 全是**陈小春**，
+  即下载工具把一堆别的歌存成了同一个名字。改标题能治「显示不对」，但 artist/album 维度
+  只能靠**按音频内容重新鉴定**（chromaprint → AcoustID，NAS 实测可达 api.acoustid.org）。
+- music-tag-web 的 Subsonic token 在 `user.UserProfile.subsonic_api_token`，
+  用 `u=<user>&p=<token>` 直接打 `http://127.0.0.1:8002/rest/…` 就能端到端验收（容器里没有 curl，用 urllib）。
