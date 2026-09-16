@@ -222,3 +222,10 @@ music-manager 的 AGENTS 说该项目旧 Python 版已作废，但 key 本身可
   RecommendationService / LimitedParallel / AppLog / ImageLoader。
 - `subsonic-player/dotnet/MEMORY.md` —— 技术栈与全部踩坑（**本会话记录在文件尾部**）。
 - `subsonic-player/dotnet/publish-singlefile.ps1` —— 单文件发布（含子进程依赖补齐 + locales 扁平化）。
+
+## 2026-09-16 m4a 流式修复
+
+客户端对 m4a 的 `BASS_ERROR_UNSTREAMABLE` 与编码/服务器无关：**服务器 Range 正常返回 206**，
+根因是 **1493 个 m4a 的 moov 索引在文件尾部**。用 `ffmpeg -c copy -movflags +faststart` remux
+（不重编码、不损音质，约 0.7s/文件）全部修好，音频流 MD5 逐个校验 0 不符。
+现在 **2804/2804 个 mp4/m4a 都是 faststart**。DSD/APE 不用转（客户端带 `bassdsd`/`bassape`）。
