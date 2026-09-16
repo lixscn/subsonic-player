@@ -418,3 +418,49 @@
   只能靠**按音频内容重新鉴定**（chromaprint → AcoustID，NAS 实测可达 api.acoustid.org）。
 - music-tag-web 的 Subsonic token 在 `user.UserProfile.subsonic_api_token`，
   用 `u=<user>&p=<token>` 直接打 `http://127.0.0.1:8002/rest/…` 就能端到端验收（容器里没有 curl，用 urllib）。
+
+## 2026-09-16 会话（续）：Chromaprint→AcoustID 全库重鉴定
+
+用户要求「AcoustID key 在 music-manager 项目里，找出来然后把文件处理了，能改名的改名，不能改名的删了也行」。
+
+### key 位置
+`music-manager/app/acoustid.py` → `DEFAULT_CLIENT = "Z1SwTAHLhW"`（也在 `music-manager/MEMORY.md` 里记着）。
+music-manager 的 AGENTS 声明其旧 Python 版已作废，但 key 仍可用。实测 NAS 能直连 `api.acoustid.org`。
+
+### 工程要点
+- **指纹必须在 NAS 宿主机算**：`/usr/bin/ffmpeg` 8.1.1 有 chromaprint muxer，而 music-tag-web 容器里的
+  ffmpeg **没有**（`Unrecognized option 'fp_format'`）。
+- **必须强制 IPv4**：`socket.getaddrinfo = lambda h,p,f=0,t=0,pr=0,fl=0: _orig(h,p,socket.AF_INET,t,pr,fl)`。
+  这台 NAS 有 IPv6 地址但没有 IPv6 路由 —— 不强制就会每首等一次超时（music-manager 的 HANDOFF 也踩过）。
+- **`meta` 参数**：用 `meta=recordings+releases` 时**必须手拼 body**，`urlencode` 会把 `+` 编成 `%2B`，
+  AcoustID 就当成一个未知 meta 名，返回的 result 里没有 recordings。
+- **存原始结果而不是解析结果**：`results.jsonl` 每行存 `{"path","dur","results":[...]}`（裁掉 releases 到 5 个），
+  解析放到 diff 阶段做 —— 这样改了选优规则可以**离线重跑，不用重查**（重查一轮 40 分钟）。
+- 限速：3 线程 + 全局 0.4s 间隔 ≈ 2.4 req/s，5980 首约 40 分钟；指纹 6 线程 `-t 150` ≈ 0.42s/首。
+- 解析改标签用 `ffmpeg -c copy -map_metadata 0 -metadata title=...`（m4a 加 `-movflags +faststart`），
+  **前后比对音频流 MD5**（用 `-t 60` 截前 60 秒即可，全片解码要两倍时间且无额外信息量）。
+  `.dsf`/`.wav` 不要用 ffmpeg 写标签（不可靠），只改数据库即可。
+
+### AcoustID 的四个陷阱（这是本次最重要的经验）
+1. **一次查询返回该指纹的所有 release/credit，同一个 result 里会同时列出旋律相同但不同的歌**。
+   实测把 `陈奕迅 - 明年今日.wav` 改成《十年》——因为《十年》(204.24s) 比《明年今日》(205.4s)
+   更接近文件的 203s。**正解：先看有没有哪个候选的 title 与文件自己提供的标题候选一致，有就采信。**
+2. **高分不等于对**。AcoustID 会把翻唱/其他 take 归到原唱：`One Direction - Story of My Life` →
+   艺术家被改成 `Oliver Harrigan`、`白允y - 唯一` → `G.E.M. 邓紫棋`。所以**不要因为高分就凭空新建艺术家**；
+   本会话的规则是「只复用库里已有的艺术家，只有该目录被判定为批量错下载目录时才允许新建」。
+3. **相同 `recording_id` 不等于同一份音频**。1546 对同 recording_id 里，有 86 对是不同 take/母带。
+   去重必须**再加 chromaprint 逐位比对**，只隔离 `similarity ≥ 0.99` 的（本次 1446 对）。
+   ⚠️ 本项目的 `similarity` 是「同位哈希相等比例」：**1.0 是铁证，低值不是反证**
+   （`夜机.flac` 与 `夜机(1).flac` 是同一录音但 sim=0.001）。
+4. `recordings[0]` 顺序任意；时长选优**只在没有 title 命中时才用**（见第 1 条）。
+
+### 副产品：怎么用数据认出「批量错下载目录」
+目录名是**歌名**而不是歌手（`20岁的眼泪 (Live)/未知/`）—— 单文件目录靠「多数决」抓不到；
+或该目录内多首在高分+时长吻合下指向**不同** AcoustID 艺术家、且**没有一个**等于目录名
+（`AakI7zzz` 22 首几乎全是 Post Malone、`De_pres_sion` 全指向 Adele、`Ado` 是 One Direction+Wayne）。
+本次共判定 1091 个此类目录，其下无法鉴定的 232 个文件被隔离。
+
+### 教训
+`tidy()` 那种「掐头去尾去掉标点」的小工具**不要把 `()` 也算进标点**——它把 `20岁的眼泪 (Live)`
+变成 `20岁的眼泪 (Live`，导致括号候选永远匹配不上，标题里的 `(Live)` 被静默丢掉。这个 bug 我查了 5 轮。
+**凡是「保留限定词」的逻辑，先写一条断言把 `foo (bar)` 原样打印出来看。**

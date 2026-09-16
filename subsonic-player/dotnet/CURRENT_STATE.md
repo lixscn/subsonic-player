@@ -36,8 +36,49 @@
 - 它**单线程串行**处理请求：并发 N 个时每个耗时 ≈ N×78ms ⇒ 优化只能靠「减请求数 + 加缓存」。
 - **转码已关闭**（用户 2026-09-15 停掉），现返回原始格式与大小，首字节 135~523ms。
   m4a 仍可能 `err=Unstreamable`（非 faststart），客户端有「下载整文件再播」兜底（LAN 上 100~240ms）。
-- 曲库（2026-09-15 清理后）：**5980 个音频文件 ↔ 5980 条曲目，严格 1:1**；3324 张专辑 / 2042 位艺术家。
+- 曲库（2026-09-16 声纹重鉴定后）：**4302 个音频文件 ↔ 4302 条曲目，严格 1:1**；2069 张专辑 / 2152 位艺术家；75GB。
 - **`music/attachments/` 是它的封面库，不是垃圾目录**（删了 `getCoverArt` 立刻 404）。
+
+## 2026-09-16 声纹（Chromaprint→AcoustID）全库重鉴定 —— 已执行完毕
+
+AcoustID application key 取自 `music-manager/app/acoustid.py`（`DEFAULT_CLIENT = "Z1SwTAHLhW"`；
+music-manager 的 AGENTS 说该项目旧 Python 版已作废，但 key 本身可用）。
+
+**流程（全部脚本在 `.audit/`，已 gitignore）**
+1. `acoustid-run.py`（**NAS 宿主机**跑，容器里的 ffmpeg **没有** chromaprint muxer）：
+   6 线程并行算 `ffmpeg -t 150 -f chromaprint -fp_format base64` → 3 线程 + 0.4s 节流查 AcoustID。
+   **必须强制 IPv4**（这台 NAS 有 IPv6 地址却没有 IPv6 路由，否则每次查询都撞超时）。
+   结果存**原始** `results[]`（不预解析）→ 可离线重解析，不用重查。5980 首 80 分钟。
+2. `acoustid-diff.py`（`/vol1/1000/runtime/tools-venv`，需 `opencc-python-reimplemented`）生成计划。
+3. `acoustid-quarantine.py`（宿主机移文件）+ `acoustid-apply.py`（容器改库/改标签/改名）。
+
+**结果**：5980 → **4302 首**；改名 1447、改标签 1432、改库 1942、隔离 1678 个文件（25GB）、
+删空专辑 1255、删空目录 2418。**0 个标签失败、0 个音频 MD5 变化、0 个目标冲突。**
+验收：磁盘↔数据库 4302↔4302，无孤立/无缺失/无重复路径；`search3` 分页合计 4302。
+
+**AcoustID 的四个陷阱（踩过，务必记住）**
+1. **一次查询返回所有 release/credit**，同一个 result 里会同时列出**旋律相同但不同歌**的录音
+   （陈奕迅《十年》/《明年今日》）。只按时长挑 ⇒ 会把文件改成隔壁那首。
+   **正解：先看有没有哪个候选的 title 与「文件自己提供的候选标题」一致，有就采信它。**
+2. **高分不等于对**：AcoustID 会把翻唱/其他 take 归到原唱（`One Direction → Oliver Harrigan`、
+   `白允y → G.E.M. 邓紫棋`）。所以**绝不因为高分就凭空新建艺术家**——只有该目录已被判定为
+   「批量错下载目录」时才允许新建。
+3. **相同 `recording_id` 不等于同一份音频**（86 对里就有时长差很多的不同 take）。
+   去重必须**再加 chromaprint 逐位比对**：本次只隔离 `sim ≥ 0.99` 的 1446 对，另有 86 对证据不足**留存**。
+   注意：本项目的 `similarity` 是「同位哈希相等比例」——**1.0 是铁证，低值不是反证**（转码/不同母带会很低）。
+4. `recordings[0]` 是任意顺序；要按时长选，但**时长选择只在没有 title 命中时才用**（见 1）。
+
+**怎么认出「批量错下载目录」**：目录名是歌名而不是歌手（`20岁的眼泪 (Live)/未知/`），
+或该目录内多首在高分+时长吻合下指向**不同** AcoustID 艺术家且**没有一个**等于目录名
+（`AakI7zzz`→Post Malone 等、`De_pres_sion`→Adele）。本次共 1091 个。
+
+**仍未处理**：① `.dsf`/`.wav` 只改了数据库、没改内嵌标签（ffmpeg 写这两种格式不可靠），
+采样 250 条里 13 条属此类 —— 客户端显示以数据库为准，不影响使用；② 399 条进了 review
+（AcoustID 的歌手不在本库 / 时长不吻合），未动；③ 1006 条 AcoustID 认不出（华语冷门居多），保持原样。
+
+**回滚**：隔离目录 `<NAS 公共目录>/.dsh-quarantine-20260915-212219/`（含 `audio-dedup2/`、`corrupt/`、
+`low-bitrate-copies/`、`acoustid-unidentified/`，合计 **25GB**）；报告与计划在
+`<NAS>/runtime/acoustid/`（`apply-plan.json` 含全部 5980 条判定与理由、`results.jsonl`、`fingerprints.json`）。
 
 ## 2026-09-15 曲库大修（服务端，已完成并端到端验收）
 
