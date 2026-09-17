@@ -55,7 +55,7 @@ powershell -File tools\gen-icons.ps1
 | `core/SubsonicClient.java` | Subsonic REST 客户端（尾斜杠探测、`p=enc:` 认证、JSON 解析） |
 | `core/Library.java` | 数据门面：后台取数 + 主线程回调 + 内存 TTL 缓存 + 「全部歌曲」渐进加载 |
 | `core/ConfigImport.java` | `server.json` 导入（换机/批量部署/自动化联调） |
-| `player/Player.java` | 播放引擎（队列/模式/进度/位置记忆/云端队列同步） |
+| `player/Player.java` | 播放引擎（队列/模式/进度/位置记忆） |
 | `player/PlaybackService.java` | 前台服务 + MediaSession + 通知栏控制 |
 | `ui/Ui.java` `ui/Theme.java` | 控件工厂 / 6 套主题配色 |
 | `ui/ItemListPage.java` `ui/Pages.java` | 通用列表页 / 页面工厂（跳转入口） |

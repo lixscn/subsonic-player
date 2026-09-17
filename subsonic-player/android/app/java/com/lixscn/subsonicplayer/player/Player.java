@@ -1899,55 +1899,6 @@ public class Player {
         return sp.getInt("bm_" + songId, 0);
     }
 
-    // ---------------- 云端队列同步 ----------------
-
-    public void syncQueueToCloud() {
-        if (queue.isEmpty()) return;
-        final List<String> ids = new ArrayList<String>();
-        for (Item it : queue) ids.add(it.id);
-        final Item cur = current();
-        final String curId = cur == null ? "" : cur.id;
-        final long pos = positionMs;
-        library.run(new Library.Work<Boolean>() {
-            @Override
-            public Boolean run() {
-                if (library.client() != null) {
-                    library.client().savePlayQueue(ids, curId, pos);
-                }
-                return Boolean.TRUE;
-            }
-        }, null);
-    }
-
-    /** 从云端恢复队列（返回是否成功） */
-    public void restoreQueueFromCloud(final Library.Done<Boolean> done) {
-        library.run(new Library.Work<List<Item>>() {
-            @Override
-            public List<Item> run() {
-                return library.client() == null ? null : library.client().getPlayQueue();
-            }
-        }, new Library.Done<List<Item>>() {
-            @Override
-            public void ok(List<Item> value) {
-                if (value == null || value.isEmpty()) {
-                    if (done != null) done.ok(Boolean.FALSE);
-                    return;
-                }
-                queue.clear();
-                queue.addAll(value);
-                index = 0;
-                notifyQueue();
-                notifyTrack();
-                if (done != null) done.ok(Boolean.TRUE);
-            }
-
-            @Override
-            public void fail(String message) {
-                if (done != null) done.ok(Boolean.FALSE);
-            }
-        });
-    }
-
     /** 打乱队列 */
     public void shuffleQueue() {
         if (queue.size() <= 1) return;

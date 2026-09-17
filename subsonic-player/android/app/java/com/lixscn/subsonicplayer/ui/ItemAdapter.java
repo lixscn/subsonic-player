@@ -202,8 +202,13 @@ public class ItemAdapter extends BaseAdapter {
         // 封面
         String url = coverUrlFor(it);
         h.cover.setBackground(Ui.rect(t.surfaceAlt, Ui.dp(ctx, 8)));
-        if (url.length() > 0) CoverLoader.get(ctx).load(url, h.cover, 0);
-        else h.cover.setImageDrawable(null);
+        h.cover.setTag(it.id);          // 标记这一行当前是谁（异步取图回来时用来防串图）
+        if (url.length() > 0) {
+            CoverLoader.get(ctx).load(url, h.cover, 0);
+        } else {
+            h.cover.setImageDrawable(null);      // 先占位
+            if (it.kind == Item.ARTIST) requestArtistCover(it, h.cover);   // 艺术家：退而取第一张专辑封面
+        }
 
         // 艺术家用圆形头像
         h.cover.setCircle(it.kind == Item.ARTIST);
@@ -315,8 +320,13 @@ public class ItemAdapter extends BaseAdapter {
         h.cover.setBackground(Ui.rect(t.surfaceAlt, Ui.dp(ctx, 10)));
         h.cover.setCircle(it.kind == Item.ARTIST);
         String url = coverUrlFor(it);
-        if (url.length() > 0) CoverLoader.get(ctx).load(url, h.cover, 0);
-        else h.cover.setImageDrawable(null);
+        h.cover.setTag(it.id);          // 同列表行：异步取图回来时防串图
+        if (url.length() > 0) {
+            CoverLoader.get(ctx).load(url, h.cover, 0);
+        } else {
+            h.cover.setImageDrawable(null);
+            if (it.kind == Item.ARTIST) requestArtistCover(it, h.cover);
+        }
 
         final int pos = position;
         h.root.setOnClickListener(new View.OnClickListener() {
@@ -345,6 +355,32 @@ public class ItemAdapter extends BaseAdapter {
         }
         int size = mode == MODE_GRID ? 512 : 256;
         return Library.get(ctx).coverUrl(it.coverArt, size);
+    }
+
+    /**
+     * 艺术家头像兜底：服务端 `artist.coverArt` 经常是空的（本库全是空的），
+     * 详情页早就用「该艺术家第一张专辑的封面」兜底了，列表以前没有 → **整列都是占位图**。
+     *
+     * <p>异步取（Library 里有 10 分钟缓存），结果回来时按 View 上打的 tag 校验：
+     * 行被复用给别的艺术家了就丢弃，避免串图。
+     */
+    private void requestArtistCover(final Item it, final ImageView iv) {
+        final String want = it.id;
+        Library.get(ctx).artistCover(want, new Library.Done<String>() {
+            @Override
+            public void ok(String coverArt) {
+                if (coverArt == null || coverArt.length() == 0) return;
+                if (!want.equals(iv.getTag())) return;      // 这一行已经换人了
+                it.coverArt = coverArt;
+                String u = Library.get(ctx).coverUrl(coverArt, mode == MODE_GRID ? 512 : 256);
+                if (u.length() > 0) CoverLoader.get(ctx).load(u, iv, 0);
+            }
+
+            @Override
+            public void fail(String message) {
+                // 取不到就保持占位图，不打扰用户
+            }
+        });
     }
 
     /** 列表中间插入一条「加载更多/状态」行用的通用单行视图 */

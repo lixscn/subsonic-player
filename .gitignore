@@ -19,3 +19,4 @@ subsonic-player/android/build/
 
 # 会话临时目录（探针脚本、截图、日志导出）
 build-tmp/
+subsonic-player/android/build*/

@@ -33,6 +33,21 @@ $AssetsDir   = Join-Path $AppDir 'assets'
 $JavaSrcDir  = Join-Path $AppDir 'java'
 $Manifest    = Join-Path $AppDir 'AndroidManifest.xml'
 $BuildDir    = Join-Path $Root 'build'
+# 这台机器上 build/ 里会有文件被别的进程以「只读共享」方式占住（读得到、删不掉、覆盖不了），
+# javac 往 build\classes 写 class 就会报「写入时出错」、jar 也覆盖不了。清不掉就换一个目录，
+# 否则整个构建卡死在一个残留文件上（根因未查明，重启后自行消失）。
+Remove-Item $BuildDir -Recurse -Force -ErrorAction SilentlyContinue
+if (Test-Path $BuildDir) {
+    foreach ($alt in @('build2', ('build-' + (Get-Date -Format 'HHmmss')))) {
+        $cand = Join-Path $Root $alt
+        Remove-Item $cand -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $cand)) {
+            Write-Host "  !!  build/ 有文件被占用，改用 $alt" -ForegroundColor Yellow
+            $BuildDir = $cand
+            break
+        }
+    }
+}
 $GenDir      = Join-Path $BuildDir 'gen'
 $ClassDir    = Join-Path $BuildDir 'classes'
 $DexDir      = Join-Path $BuildDir 'dex'

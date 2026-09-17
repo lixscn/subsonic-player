@@ -734,36 +734,6 @@ public class SubsonicClient {
         return true;
     }
 
-    /** 云端播放队列（不支持时返回 null） */
-    public List<Item> getPlayQueue() {
-        try {
-            JSONObject r = call("getPlayQueue", null);
-            JSONObject q = obj(r, "playQueue");
-            if (q == null) return null;
-            List<Item> songs = parseSongs(arr(q, "entry"));
-            return songs.isEmpty() ? null : songs;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    public boolean savePlayQueue(List<String> songIds, String currentId, long positionMs) {
-        try {
-            if (songIds == null || songIds.isEmpty()) return false;
-            StringBuilder q = new StringBuilder("&id=");
-            for (int i = 0; i < songIds.size(); i++) {
-                if (i > 0) q.append(',');
-                q.append(songIds.get(i));
-            }
-            q.append("&position=").append(positionMs);
-            if (currentId != null && currentId.length() > 0) q.append("&current=").append(Http.enc(currentId));
-            call("savePlayQueue", q.toString());
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     /** 扫描状态（歌曲/专辑/艺术家总量） */
     public JSONObject getScanStatus() {
         try {
