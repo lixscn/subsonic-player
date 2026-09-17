@@ -10,8 +10,11 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.widget.ImageView;
+
+import com.lixscn.subsonicplayer.R;
 
 /**
  * 圆角 / 圆形封面 ImageView（专辑、艺术家图用）。
@@ -51,6 +54,10 @@ public class CircleCover extends ImageView {
     private float mCornerRadius;
     private boolean mCircle;
 
+    /** 没有封面时画在中间的占位图标（懒创建 + 记下当前主题色，主题变了重建） */
+    private Drawable mPlaceholderIcon;
+    private int mPlaceholderTint;
+
     public CircleCover(Context context) {
         this(context, null);
     }
@@ -69,21 +76,66 @@ public class CircleCover extends ImageView {
         if (px < 0f) {
             px = 0f;
         }
-        if (mCornerRadius == px) {
+        if (mCornerRadius == px && !mCircle) {
+            applyShapeToBackground();
             return;
         }
         mCornerRadius = px;
         mCircle = false;
+        applyShapeToBackground();
         invalidate();
     }
 
     /** true = 画正圆（覆盖圆角设置）；false = 回到圆角矩形。 */
     public void setCircle(boolean circle) {
-        if (mCircle == circle) {
+        boolean changed = (mCircle != circle);
+        mCircle = circle;
+        applyShapeToBackground();
+        if (changed) {
+            invalidate();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 底色（background）形状跟随
+    // ------------------------------------------------------------------
+
+    @Override
+    public void setBackground(Drawable background) {
+        super.setBackground(background);
+        applyShapeToBackground();
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        applyShapeToBackground();
+    }
+
+    /**
+     * 让「底色」跟当前形状一致。
+     *
+     * <p>为什么需要：各页面给封面铺的底色是**圆角矩形**（{@code Ui.rect(surfaceAlt, 8dp)}），
+     * 而艺术家头像是**正圆**。底色不跟着变圆的话四角会露出来 —— 没封面时占位图和底色同色，
+     * 结果看起来是个圆角方块，跟有封面时的圆形不一致。
+     */
+    private void applyShapeToBackground() {
+        Drawable bg = getBackground();
+        if (!(bg instanceof GradientDrawable)) {
             return;
         }
-        mCircle = circle;
-        invalidate();
+        int w = getWidth();
+        int h = getHeight();
+        if (w <= 0 || h <= 0) {
+            return;   // 还没 layout，onSizeChanged 里会再调一次
+        }
+        try {
+            ((GradientDrawable) bg).setCornerRadius(mCircle
+                    ? Math.min(w, h) / 2f
+                    : Math.min(mCornerRadius, Math.min(w, h) / 2f));
+        } catch (Throwable ignored) {
+            // 某些 ROM 上 setCornerRadius 可能抛，忽略即可（最多退化成圆角矩形）
+        }
     }
 
     // ------------------------------------------------------------------
@@ -133,7 +185,8 @@ public class CircleCover extends ImageView {
     protected void onDraw(Canvas canvas) {
         final Bitmap bmp = mSource;
         if (bmp == null || bmp.isRecycled()) {
-            super.onDraw(canvas);
+            // 没有封面（服务端没给 coverArt / 加载失败 / 还没加载完）→ 画占位，**不留空白**。
+            drawPlaceholder(canvas);
             return;
         }
 
@@ -225,6 +278,68 @@ public class CircleCover extends ImageView {
             } else {
                 canvas.drawRect(mDstRect, mPaint);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 占位图（没有封面时）
+    // ------------------------------------------------------------------
+
+    /**
+     * 画「没有封面」的占位：和真实封面同样的形状（圆角矩形 / 正圆）+ 居中音符图标。
+     *
+     * <p>形状规则与 {@link #onDraw(Canvas)} 保持一致（圆形按短边取正方形居中），
+     * 所以列表 / 网格 / 播放页 / 迷你条 尺寸不同也不会变形。
+     */
+    private void drawPlaceholder(Canvas canvas) {
+        final int padLeft = getPaddingLeft();
+        final int padTop = getPaddingTop();
+        final int vw = getWidth() - padLeft - getPaddingRight();
+        final int vh = getHeight() - padTop - getPaddingBottom();
+        if (vw <= 0 || vh <= 0) {
+            return;
+        }
+
+        final Context c = getContext();
+        final Theme.Colors t = Ui.colors(c);
+
+        // 关键：上一次画真实封面时 mPaint 上挂着 BitmapShader，这里必须摘掉
+        mPaint.setShader(null);
+        mPaint.setAlpha(255);
+        mPaint.setColor(t.surfaceAlt);
+
+        if (mCircle) {
+            float side = Math.min(vw, vh);
+            float cx = padLeft + vw / 2f;
+            float cy = padTop + vh / 2f;
+            canvas.drawCircle(cx, cy, side / 2f, mPaint);
+        } else {
+            float r = Math.min(mCornerRadius, Math.min(vw, vh) / 2f);
+            mDstRect.set(padLeft, padTop, padLeft + vw, padTop + vh);
+            if (r > 0f) {
+                canvas.drawRoundRect(mDstRect, r, r, mPaint);
+            } else {
+                canvas.drawRect(mDstRect, mPaint);
+            }
+        }
+
+        // 居中音符（矢量，任意尺寸都清晰）
+        final int tint = Ui.alpha(t.textFaint, 0.9f);
+        if (mPlaceholderIcon == null || mPlaceholderTint != tint) {
+            try {
+                mPlaceholderIcon = c.getDrawable(R.drawable.ic_song).mutate();
+                mPlaceholderIcon.setTint(tint);
+                mPlaceholderTint = tint;
+            } catch (Throwable ignored) {
+                mPlaceholderIcon = null;
+            }
+        }
+        if (mPlaceholderIcon != null) {
+            int side = Math.max(Ui.dp(c, 16), Math.round(Math.min(vw, vh) * 0.40f));
+            int cx = padLeft + vw / 2;
+            int cy = padTop + vh / 2;
+            mPlaceholderIcon.setBounds(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2);
+            mPlaceholderIcon.draw(canvas);
         }
     }
 

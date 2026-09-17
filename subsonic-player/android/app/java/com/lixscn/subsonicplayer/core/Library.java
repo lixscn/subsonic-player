@@ -1,6 +1,9 @@
 package com.lixscn.subsonicplayer.core;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -62,6 +65,7 @@ public class Library {
         this.appCtx = ctx.getApplicationContext();
         this.settings = Settings.get(appCtx);
         rebuildClient();
+        startNetworkWatch();
     }
 
     public static synchronized Library get(Context ctx) {
@@ -322,6 +326,206 @@ public class Library {
                 return Boolean.FALSE;
             }
         }, done);
+    }
+
+    // ---------------- 网络变化 → 自动换地址（方案 A） ----------------
+
+    /** 地址真的换了才回调（播放器据此用新地址断点续播） */
+    public interface AddressListener {
+        void onAddressChanged(String url, long latencyMs);
+    }
+
+    /** 两次探测的最小间隔：系统在网络切换瞬间会连发多个回调，必须防抖 */
+    private static final long NET_CHECK_COOLDOWN_MS = 5000;
+    /** 收到回调后先等一下再探测：新网络刚建立时立刻探容易假失败 */
+    private static final long NET_CHECK_DELAY_MS = 1500;
+
+    private AddressListener addressListener;
+    private volatile boolean netWatchStarted;
+    private boolean netCheckPending;
+    private long lastNetCheckAt;
+    private volatile long lastSwitchLatency;
+    /** 上一次「网络已验证可上网」的状态：用来过滤掉刷屏的 onCapabilitiesChanged */
+    private boolean capsValidated;
+
+    public void setAddressListener(AddressListener l) {
+        this.addressListener = l;
+    }
+
+    /**
+     * 注册系统网络变化监听（进程级只注册一次）。
+     *
+     * <p>用途：手机在「家里 WiFi ⇄ 蜂窝」之间切来切去时，当前地址可能已经不可达，
+     * 但 App 原先**完全不知道网络变了**（grep 全项目 0 处网络监听），于是出门在外还拿着
+     * 内网地址猛试。这里只负责「发现变化 → 重新确认地址」，**是否切换**由
+     * {@link #onNetworkChanged} 按方案 A 决定。
+     */
+    public void startNetworkWatch() {
+        if (netWatchStarted) return;
+        netWatchStarted = true;
+        main.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    ConnectivityManager cm = (ConnectivityManager)
+                            appCtx.getSystemService(Context.CONNECTIVITY_SERVICE);
+                    if (cm == null) return;
+                    cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                        @Override
+                        public void onAvailable(Network network) {
+                            scheduleNetworkCheck("onAvailable");
+                        }
+
+                        @Override
+                        public void onLost(Network network) {
+                            scheduleNetworkCheck("onLost");
+                        }
+
+                        @Override
+                        public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
+                            // 这个回调在部分 ROM（实测 MIUI）上每十几秒就来一次。要是每次都去 ping
+                            // 服务器，既费电又费流量（用户明确在意流量）—— 只有「能不能上网」这个
+                            // 状态真的变了才重新确认地址；WiFi ⇄ 蜂窝 的切换由 onAvailable/onLost 覆盖。
+                            boolean validated = caps != null
+                                    && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                                    && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                            synchronized (Library.this) {
+                                if (validated == capsValidated) return;
+                                capsValidated = validated;
+                            }
+                            scheduleNetworkCheck("onCapabilitiesChanged");
+                        }
+                    });
+                    PlayLog.init(appCtx);
+                    PlayLog.w(TAG, "已注册网络变化监听（切网后自动确认地址）");
+                } catch (Throwable t) {
+                    PlayLog.w(TAG, "网络监听注册失败（不影响其它功能）", t);
+                }
+            }
+        });
+    }
+
+    /** 合并短时间内的多次回调，延迟一小段再探测（网络刚切换时探测会假失败） */
+    private void scheduleNetworkCheck(final String reason) {
+        main.post(new Runnable() {
+            @Override
+            public void run() {
+                if (netCheckPending) return;
+                netCheckPending = true;
+                main.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        netCheckPending = false;
+                        PlayLog.w(TAG, "网络变化（" + reason + "）→ 重新确认地址");
+                        onNetworkChanged(null);
+                    }
+                }, NET_CHECK_DELAY_MS);
+            }
+        });
+    }
+
+    /**
+     * 网络变化后重新确认当前地址是否还可用；**只在不可用时才切换**（方案 A：能播就不动）。
+     *
+     * <p>① 先探当前地址，通就什么都不做（避免频繁重连断流 + 白费流量）；
+     * ② 不通才把内网/外网两个地址都探一遍，选**探测通过且延迟低**的那个；
+     * ③ 真的换了地址才回调 {@link AddressListener}。
+     * 带 {@value #NET_CHECK_COOLDOWN_MS} 毫秒冷却，防抖动。
+     */
+    public void onNetworkChanged(final Done<Boolean> done) {
+        if (client == null) {
+            if (done != null) done.ok(Boolean.FALSE);
+            return;
+        }
+        synchronized (this) {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - lastNetCheckAt < NET_CHECK_COOLDOWN_MS) {
+                if (done != null) done.ok(Boolean.FALSE);
+                return;
+            }
+            lastNetCheckAt = now;
+        }
+        final Settings.Service svc = settings.currentService();
+        run(new Work<Boolean>() {
+            @Override
+            public Boolean run() {
+                PlayLog.init(appCtx);
+                final String current = client.activeUrl();
+                // ① 当前地址还通就不动
+                long t0 = android.os.SystemClock.elapsedRealtime();
+                if (client.ping(3000)) {
+                    PlayLog.w(TAG, "网络变化 → 当前地址仍可用（延迟 "
+                            + (android.os.SystemClock.elapsedRealtime() - t0) + "ms），不切换");
+                    return Boolean.FALSE;
+                }
+                // ② 当前地址不可达：内外网各探一次，选延迟低的
+                List<String> candidates = new ArrayList<String>();
+                if (svc != null) {
+                    String lan = norm(svc.lanUrl);
+                    String wan = norm(svc.wanUrl);
+                    if (lan.length() > 0) candidates.add(lan);
+                    if (wan.length() > 0 && !wan.equals(lan)) candidates.add(wan);
+                }
+                String best = "";
+                long bestLatency = -1;
+                for (int i = 0; i < candidates.size(); i++) {
+                    String url = candidates.get(i);
+                    if (url.equals(current)) continue;
+                    client.useUrl(url);
+                    long s = android.os.SystemClock.elapsedRealtime();
+                    boolean ok = client.ping(i == candidates.size() - 1 ? 8000 : 3000);
+                    long lat = android.os.SystemClock.elapsedRealtime() - s;
+                    PlayLog.w(TAG, "备选地址探测 " + PlayLog.safeUrl(url) + " → "
+                            + (ok ? "通" : "不通") + "（" + lat + "ms）");
+                    if (ok && (bestLatency < 0 || lat < bestLatency)) {
+                        best = url;
+                        bestLatency = lat;
+                    }
+                }
+                if (best.length() == 0) {
+                    // 两个地址都不通（可能真的没网）：恢复原地址，等下一次网络变化
+                    client.useUrl(current);
+                    PlayLog.w(TAG, "网络变化 → 内网/外网都不可达，保持原地址");
+                    return Boolean.FALSE;
+                }
+                // ③ 真的换了地址
+                client.useUrl(best);
+                connectedUrl = best;
+                client.learnPrefix();
+                lastSwitchLatency = bestLatency;
+                PlayLog.w(TAG, "网络变化 → 当前地址不可用 → 已切到" + labelOf(svc, best)
+                        + "（延迟 " + bestLatency + "ms）");
+                return Boolean.TRUE;
+            }
+        }, new Done<Boolean>() {
+            @Override
+            public void ok(Boolean switched) {
+                if (switched != null && switched.booleanValue() && addressListener != null) {
+                    addressListener.onAddressChanged(client == null ? "" : client.activeUrl(),
+                            lastSwitchLatency);
+                }
+                if (done != null) done.ok(switched);
+            }
+
+            @Override
+            public void fail(String message) {
+                if (done != null) done.ok(Boolean.FALSE);
+            }
+        });
+    }
+
+    /** 去掉尾部斜杠（与 SubsonicClient 内部一致），便于比较「是不是同一个地址」 */
+    private static String norm(String url) {
+        String u = url == null ? "" : url.trim();
+        while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
+        return u;
+    }
+
+    private static String labelOf(Settings.Service svc, String url) {
+        if (svc == null) return "地址";
+        if (norm(svc.lanUrl).equals(url)) return "内网地址";
+        if (norm(svc.wanUrl).equals(url)) return "外网地址";
+        return "地址";
     }
 
     // ---------------- 直链 ----------------

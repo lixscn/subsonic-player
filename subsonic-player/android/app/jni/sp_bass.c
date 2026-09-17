@@ -36,8 +36,16 @@
 
 #define JNI_FN(name) Java_com_lixscn_subsonicplayer_player_bass_BassNative_##name
 
-/* 流标志：BLOCK 让网络流边下边播；STATUS 才会回调进度；FLOAT 提高精度 */
-#define SP_STREAM_FLAGS (BASS_STREAM_BLOCK | BASS_STREAM_STATUS | BASS_SAMPLE_FLOAT)
+/* 流标志：STATUS 才会回调进度；FLOAT 提高精度。
+ *
+ * ⚠️ 这里**不能**加 BASS_STREAM_BLOCK（2026-09-17 移除）：BLOCK 是"分块下载、不可定位"，
+ * 加上它之后 BASS_ChannelSetPosition 对网络流**永远返回 false**，后果是：
+ *   1) 切网/断流后的"断点续播"实际从 0 重新开始（真机日志：续播定位 ok=false，pos 一直往前跑）；
+ *   2) 播放页进度条拖动对**所有流式曲目**都无效（只是没人注意到）。
+ * 桌面端（同一台服务器、同一套 BASS）一直是不带 BLOCK 的 BASS_StreamCreateURL，
+ * 拖动/定位都正常 —— 两端行为对齐。
+ * 起播速度不靠 BLOCK：见 nativeInit 里的 NET_PREBUF=10% + PREBUF_WAIT=0。 */
+#define SP_STREAM_FLAGS (BASS_STREAM_STATUS | BASS_SAMPLE_FLOAT)
 
 /* BASS 自带网络模块**不含 HTTPS**（未加载 SSL 插件时建 https 流会返回 BASS_ERROR_SSL=10）。
    bass_ssl 是纯插件：加载即生效，不需要调用任何函数，所以这里用 BASS_PluginLoad 挂上。 */
@@ -48,6 +56,35 @@ static void sp_load_ssl(void) {
     /* Android 的 dlopen 会在应用 nativeLibraryDir 里找带 soname 的库 */
     sp_ssl_plugin = BASS_PluginLoad("libbass_ssl.so", 0);
     if (!sp_ssl_plugin) sp_ssl_plugin = BASS_PluginLoad("bass_ssl", 0);
+}
+
+/* ★ 格式 add-on 必须**显式** BASS_PluginLoad 才生效 —— 只把 .so 链进来（DT_NEEDED）没用。
+   真机教训（2026-09-17）：`.ape` 走 URL 建流回 BASS_ERROR_FILEFORM(41)，整首下到本地再建流**还是 41**，
+   于是被上层当成「坏文件」跳过（还白下了 28MB）。原因是 bassape/basswv/bassdsd 从来没被 PluginLoad 过；
+   而 mp3 / mp4(aac,alac) / flac / wav / ogg 是 BASS 核心自带的，所以那些格式一直正常，
+   让人误以为「APE/WavPack/DSD 安卓端就是不支持」。
+   加载失败不影响其它格式（返回 0 而已），所以这里不判错。 */
+static void sp_load_plugins(void) {
+    static int done = 0;
+    if (done) return;
+    done = 1;
+#ifdef SP_HAVE_DSD
+    BASS_PluginLoad("libbassdsd.so", 0);
+#endif
+#ifdef SP_HAVE_FLAC
+    BASS_PluginLoad("libbassflac.so", 0);      /* 核心已带，多载无害 */
+#endif
+#ifdef SP_HAVE_APE
+    BASS_PluginLoad("libbassape.so", 0);
+#endif
+#ifdef SP_HAVE_WV
+    BASS_PluginLoad("libbasswv.so", 0);
+#endif
+#ifdef SP_HAVE_OPUS
+    BASS_PluginLoad("libbassopus.so", 0);
+#endif
+    /* MP4/AAC 核心一般自带；老核心/老设备上它是个 add-on，顺带挂上 */
+    BASS_PluginLoad("libbass_aac.so", 0);
 }
 
 JNIEXPORT jboolean JNICALL JNI_FN(nativeSslLoaded)(JNIEnv *env, jclass clazz) {
@@ -64,6 +101,7 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint de
         if (err != BASS_ERROR_ALREADY) return JNI_FALSE;
     }
     sp_load_ssl();                                     /* HTTPS 支持（流地址是 https://） */
+    sp_load_plugins();                                 /* FLAC/APE/WavPack/DSD/Opus/AAC add-on */
     BASS_SetConfig(BASS_CONFIG_NET_TIMEOUT, 15000);   /* 网络流超时 */
     /* 网络缓冲与预缓冲（单位要说清楚，别像我上次把百分比当毫秒）：
        BASS_CONFIG_NET_BUFFER    = 缓冲长度，单位**毫秒**（默认 5000）
@@ -74,7 +112,12 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint de
        - BUFFER 放到 60 秒：起播后 BASS 会持续保持这么长的"余量"，抗抖主要靠它
          （代价仅内存：最坏情况约 30MB，普通码率曲目可忽略）
        - PREBUF 保持小值 + PREBUF_WAIT=0：起播要快，不为了填满缓冲让人干等 */
-    BASS_SetConfig(BASS_CONFIG_NET_BUFFER, 60000);        /* 60 秒网络缓冲 */
+    /* 缓冲策略（2026-09-17 调整：链路已直连变快，60 秒太费流量）：
+       - BUFFER = 30 秒：BASS 会持续保持这么长的"余量"抗抖；**它同时也是流量浪费的上限** ——
+         每次切歌/停止时，已经提前下好但没听过的那部分就白费了，60 秒在高码率下意味着
+         每次切歌最多扔掉十几 MB。链路从 DERP 中继换成直连后（378KB/s）30 秒足够。
+       - PREBUF 保持小值 + PREBUF_WAIT=0：起播要快，不为了填满缓冲让人干等 */
+    BASS_SetConfig(BASS_CONFIG_NET_BUFFER, 30000);        /* 30 秒网络缓冲（原 60） */
     BASS_SetConfig(BASS_CONFIG_NET_PREBUF, 10);           /* 起播目标 10%，且不阻塞 */
     BASS_SetConfig(BASS_CONFIG_NET_PREBUF_WAIT, 0);
     BASS_SetConfig(BASS_CONFIG_NET_READTIMEOUT, 30000);   /* 30 秒收不到数据才判死 */

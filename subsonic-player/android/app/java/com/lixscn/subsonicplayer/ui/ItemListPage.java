@@ -147,6 +147,13 @@ public class ItemListPage extends Page {
         adapter = new ItemAdapter(act, items, config.grid ? ItemAdapter.MODE_GRID : ItemAdapter.MODE_LIST,
                 config.columns, config.listener);
         listView.setAdapter(adapter);
+        // 自动切歌时也要刷新「正在播放」高亮（行高亮只在 getView 里算，没人通知就一直是旧的）
+        watchPlaying(new Runnable() {
+            @Override
+            public void run() {
+                if (adapter != null) adapter.notifyDataSetChanged();
+            }
+        });
 
         footer = Ui.row(act);
         footer.setGravity(Gravity.CENTER);
@@ -339,6 +346,7 @@ public class ItemListPage extends Page {
     @Override
     public void onDestroy() {
         destroyed = true;
+        unwatchPlaying();
         adapter = null;
     }
 }

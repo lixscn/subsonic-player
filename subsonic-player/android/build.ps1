@@ -146,6 +146,17 @@ $Jar = Join-Path $JavaHome 'bin\jar.exe'
 Assert-Tool $Jar 'jar.exe (JDK)'
 $ClassJar = Join-Path $BuildDir 'classes.jar'
 Remove-Item $ClassJar -Force -ErrorAction SilentlyContinue
+# classes.jar 偶尔会被别的进程以「只读共享」方式占着（实测：上次会话留下的句柄，
+# 读得到却删不掉/覆盖不了），此时 jar 无法写它，构建会卡在 d8 之前报 AccessDenied。
+# 检测到覆盖不了就换一个带时间戳的文件名，别让一个残留文件把整条构建卡死。
+if (Test-Path $ClassJar) {
+    $jarLocked = $false
+    try { $probe = [System.IO.File]::OpenWrite($ClassJar); $probe.Close() } catch { $jarLocked = $true }
+    if ($jarLocked) {
+        $ClassJar = Join-Path $BuildDir ('classes-' + (Get-Date -Format 'HHmmss') + '.jar')
+        Write-Host "  !!  classes.jar 被占用，改用 $(Split-Path $ClassJar -Leaf)" -ForegroundColor Yellow
+    }
+}
 & $Jar cf $ClassJar -C $ClassDir . 2>&1 | ForEach-Object { Write-Host "  $_" }
 if ($LASTEXITCODE -ne 0) { throw '打包 classes.jar 失败' }
 & $D8 --release --min-api $MinSdk --lib $AndroidJar --output $DexDir $ClassJar 2>&1 |

@@ -149,6 +149,13 @@ public class SearchPage extends Page {
             }
         });
         list.setAdapter(adapter);
+        // 自动切歌时刷新「正在播放」高亮
+        watchPlaying(new Runnable() {
+            @Override
+            public void run() {
+                if (adapter != null) adapter.notifyDataSetChanged();
+            }
+        });
         // ItemAdapter 的行自己处理点击，行数很少时部分机型仍会把长按交给 ListView，兜一层
         list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
@@ -688,6 +695,7 @@ public class SearchPage extends Page {
     @Override
     public void onDestroy() {
         destroyed = true;
+        unwatchPlaying();
         token++;
         handler.removeCallbacks(debounce);
     }

@@ -119,10 +119,12 @@ android/
 | 浏览 | 发现（问候/快捷入口/最近添加/常听/随机推荐/精选歌曲）、专辑网格（5 种排序）、艺术家、全部歌曲（渐进式按专辑展开）、歌单、风格、最近播放、书签续播 |
 | 搜索 | 歌曲/专辑/艺术家三段结果、350ms 防抖、最近搜索词 |
 | 播放 | 顺序/随机/列表循环/单曲循环、队列编辑（移除/下一首播放/随机/清空）、进度拖动、音量、断点续播、播放位置持久化、云端队列同步（OpenSubsonic `savePlayQueue`） |
+| 网络 | **切网自动换地址**：WiFi ⇄ 蜂窝切换后重新确认当前地址，**只在真的不可达时才换**（内网 ⇄ 外网、选延迟低的），换完**从断点续播**；流量模式下切到蜂窝会中止后台缓存 |
+| 缓存 | 「边播边存」整首存本地（重播零流量）、缓存优先播放、4GB LRU、设置页可看用量/一键清空；已缓存的曲目在**播放页 + 播放队列**显示**「本地」标志**（浏览列表不加，保持干净） |
 | 后台 | 前台服务 + MediaSession：通知栏 3 键、锁屏、耳机按键、音频焦点（来电/其他 App 抢占时自动暂停、拔出耳机暂停） |
 | 歌词 | 服务端同步歌词（`getLyricsBySongId`）→ 服务端 LRC（`getLyrics`）→ LRCLIB → 网易云兜底；卡拉OK 滚动高亮 |
 | 媒体管理 | 收藏（红心）、1–5 星评分、加入歌单/新建歌单/重命名/删除/移除曲目、播放上报（scrobble） |
-| 外观 | 6 套主题（深邃黑/月光白/森林绿/午夜蓝/落日橙/玫瑰紫）+ 6 种强调色，设置页即时切换 |
+| 外观 | 6 套主题（深邃黑/月光白/森林绿/午夜蓝/落日橙/玫瑰紫）+ 6 种强调色，设置页即时切换；**没有封面的曲目/专辑/艺术家用「音符占位图」**（不留空白，艺术家的占位跟着圆形头像一起变圆） |
 
 ### 服务端适配（实测「道理鱼音乐 / Music Tap」，Subsonic 1.16.0）
 
@@ -132,7 +134,11 @@ android/
 - 封面 id 形如 `al-<albumId>`；部分响应 `coverArt` 为空，按该约定兜底。
 - 歌曲 JSON 里 `bitrate` 与 `bitRate` **重复键**：`org.json` 容忍重复键（后者覆盖前者），这也是选 JSON 而非 XML 的原因之一。
 - `getBookmarks` 返回空响应体 → 做了容错；本机书签独立存 SharedPreferences。
-- 服务端**不转码**：`stream` 直接返回原始文件（实测 `maxBitRate` / `format=mp3` 被忽略），因此播放能力受系统解码器限制 —— **mp3 / m4a(AAC) / flac / wav / ogg 可播，DSD(.dsf)、APE、WavPack 等暂不可播**。
+- 服务端**不转码**：`stream` 直接返回原始文件（实测 `maxBitRate` / `format=mp3` 被忽略）。
+  可播格式 = BASS 核心自带（**mp3 / m4a(AAC,ALAC) / flac / wav / ogg**）+ add-on 插件（**APE / WavPack / DSD / Opus**）。
+- 它对**自己不认识的格式**（`.ape` / `.dsf` …）会返回**空的 `suffix`**，只在 `contentType` 里给对 MIME
+  （例：`suffix=""` + `contentType: "audio/ape"`）。所以判断格式一律用 `FormatSupport.suffixOf()`
+  （内部已用 `contentType` 兜底），**不要直接读 `item.suffix`**。
 - `getScanStatus` 用 `count` 表示歌曲总数（标准字段名是 `songCount`），两个都兼容。
 
 ---
@@ -177,3 +183,21 @@ powershell -File tools\dev-push-config.ps1
 6. 服务器是 HTTP 明文 → manifest 必须 `usesCleartextTraffic="true"`（Android 9+ 默认禁止）。
 7. Android 13+ 通知需要运行时权限 `POST_NOTIFICATIONS`：在首次播放时申请。
 8. `Select-Object -First N` 会提前终止上游进程（Node 探测脚本被 EPIPE 杀掉过），排查脚本输出别用它。
+9. **BASS 的格式 add-on 必须显式 `BASS_PluginLoad`**：把 `libbassape.so` 之类「链」进 `libspbass.so`（DT_NEEDED）**不会**让 BASS 认识该格式。
+   漏了这一步的后果极具误导性：mp3 / m4a / flac / wav 是**核心自带**所以一直正常，而 `.ape` / `.dsf` / `.wv` 全部回
+   `BASS_ERROR_FILEFORM(41)`，看起来就像「安卓端不支持这些格式」—— 实际是插件没挂上。见 `sp_bass.c` 的 `sp_load_plugins()`。
+10. **`BASS_STREAM_BLOCK` 会让网络流永远不能定位**（`BASS_ChannelSetPosition` 恒返回 false）：
+   于是「断点续播」实际从 0 开始、播放页**进度条拖动对所有流式曲目都无效**。
+   去掉 BLOCK 即可（桌面端从来没用它）；起播快慢靠 `NET_PREBUF` + `PREBUF_WAIT=0`，不靠 BLOCK。
+11. **改 `app/jni/sp_bass.c` 后必须重编 native**：`tools\build-native.ps1 -Abis 'arm64-v8a','x86_64'`。
+   注意 `-Abis` 是 `[string[]]`，**要用数组写法**（`-Abis arm64-v8a,x86_64` 会被 `powershell -File` 当成两个参数报错）。
+12. `build\classes.jar` 偶尔会被别的进程以「只读共享」方式占住（读得到、删不掉、覆盖不了），
+   `jar cf` 覆写它就会 `AccessDeniedException` 让构建失败。`build.ps1` 已加兜底：检测到占用就改用 `classes-<时间戳>.jar`。
+   （2026-09-17 遇到过，根因未查明，重启后自行消失。）
+13. **曲目在本地落盘时（历史 / 队列 state / 书签）必须连 `suffix`、`contentType` 一起存**。
+   只存 id/title/artist/album 的话，恢复出来的曲目格式信息全空：缓存文件名退化成 `<id>.bin`、
+   `.dsf` 不会走 bassdsd 专用建流函数、「本地」标志也可能算错。写侧见 `MainActivity.recordHistory`、
+   `Player.saveState`/`saveBookmark`，读侧见 `Player.restoreLastQueue`、`Pages.songFromJson`。
+14. **起播要确保前台服务在跑**：`Player.startCurrent()` 里统一 `startService(PlaybackService)`。
+   以前只有 `MainActivity.playNow()` 会调 —— 从**播放队列页**点歌、按耳机键切歌都绕过了它，
+   结果是「有声音但没有通知栏/锁屏控制，退到后台还可能被系统回收」。

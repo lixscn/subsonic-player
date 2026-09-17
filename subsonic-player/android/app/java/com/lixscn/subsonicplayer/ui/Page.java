@@ -3,6 +3,7 @@ package com.lixscn.subsonicplayer.ui;
 import android.view.View;
 
 import com.lixscn.subsonicplayer.MainActivity;
+import com.lixscn.subsonicplayer.core.Item;
 import com.lixscn.subsonicplayer.core.Library;
 import com.lixscn.subsonicplayer.player.Player;
 
@@ -66,5 +67,53 @@ public abstract class Page {
     /** 页面是否显示迷你播放条 */
     public boolean showMiniPlayer() {
         return true;
+    }
+
+    // ---------------- 「正在播放」高亮刷新 ----------------
+
+    private Player.Listener playingWatcher;
+
+    /**
+     * 订阅「当前播放曲目变化」，用来刷新列表里「正在播放」那一行的高亮。
+     *
+     * <p>为什么需要：行高亮是在 {@code ItemAdapter.getView()} 里按 {@code Player.current()} 判定的，
+     * **只有重绘才会更新**。用户手点某一首时适配器会自己 {@code notifyDataSetChanged()}，
+     * 但**自动切歌**（一首放完自动下一首 / 通知栏切歌 / 播放页切歌）没有任何人通知列表 ——
+     * 结果旧曲目那一行一直亮着、新曲目不亮，看着就是「选中状态错了」。
+     *
+     * <p>子类务必在 {@code onDestroy()} 里调用 {@link #unwatchPlaying()}（项目铁律：注册了监听就要注销）。
+     */
+    protected void watchPlaying(final Runnable onChanged) {
+        unwatchPlaying();
+        playingWatcher = new Player.Listener() {
+            @Override
+            public void onTrackChanged(Item song) {
+                if (onChanged != null) onChanged.run();
+            }
+
+            @Override
+            public void onProgress(boolean playing, int positionMs, int durationMs) {
+            }
+
+            @Override
+            public void onQueueChanged() {
+                if (onChanged != null) onChanged.run();
+            }
+
+            @Override
+            public void onModeChanged(int mode) {
+            }
+
+            @Override
+            public void onPlaybackError(String message) {
+            }
+        };
+        if (player != null) player.addListener(playingWatcher);
+    }
+
+    /** 注销 {@link #watchPlaying} 注册的监听 */
+    protected void unwatchPlaying() {
+        if (playingWatcher != null && player != null) player.removeListener(playingWatcher);
+        playingWatcher = null;
     }
 }

@@ -64,7 +64,13 @@ powershell -File tools\gen-icons.ps1
 ## 已知限制（有意为之，别当 bug 修）
 
 - 无 BASS 音效链路：EQ / DSP / 实时频谱 / Gapless / 淡入淡出 均未实现。
-- 服务端**不转码**（实测 `maxBitRate` / `format=mp3` 被忽略），`stream` 直接给原始文件 → 可播 mp3 / m4a(AAC) / flac / wav / ogg，**DSD(.dsf) / APE / WavPack 不可播**。
+- 服务端**不转码**（实测 `maxBitRate` / `format=mp3` 被忽略），`stream` 直接给原始文件。
+  可播格式 = **BASS 核心自带**（mp3 / m4a(AAC,ALAC) / flac / wav / ogg）+ **add-on 插件**（APE / WavPack / DSD / Opus）。
+  ⚠️ 插件必须显式 `BASS_PluginLoad` 才生效（见 `sp_bass.c` 的 `sp_load_plugins()`）——
+  2026-09-17 之前漏了这一步，导致 .ape/.dsf/.wv 一律 `BASS_ERROR_FILEFORM(41)` 被当成「坏文件」，
+  还被误记成「安卓端就是不支持」。
 - 下载原文件、分享链接（仅复制播放链接）未实现。
 - 「全部歌曲」没有服务端端点，是按专辑分页展开的渐进式加载，首次进入需要滚一会儿才完整。
 - 「最近播放」是本机记录（`sp_history`），不是服务端 scrobble 历史。
+- **服务端脏数据**：它对不认识的格式（APE/DSD 等）返回**空 `suffix`**，只在 `contentType` 里给对 MIME。
+  所以判断格式一律走 `FormatSupport.suffixOf()`（内部已用 `contentType` 兜底），别直接读 `item.suffix`。

@@ -13,3 +13,9 @@ publish/
 
 # 误建的空占位文件
 /app.js
+
+# Android 构建中间产物（编译出的 class / dex / APK / 中间截图；由 build.ps1 重新生成）
+subsonic-player/android/build/
+
+# 会话临时目录（探针脚本、截图、日志导出）
+build-tmp/

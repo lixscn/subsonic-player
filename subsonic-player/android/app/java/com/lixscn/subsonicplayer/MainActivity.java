@@ -314,6 +314,12 @@ public class MainActivity extends Activity implements Player.Listener {
         miniProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(c.accent));
         miniProgress.setProgressBackgroundTintList(
                 android.content.res.ColorStateList.valueOf(Ui.alpha(c.text, 0.16f)));
+        try {
+            // 缓存二级段用强调色的淡色（系统默认灰在这套配色里很突兀）
+            miniProgress.setSecondaryProgressTintList(
+                    android.content.res.ColorStateList.valueOf(Ui.alpha(c.accent, 0.35f)));
+        } catch (Throwable ignored) {
+        }
         miniProgress.setClickable(false);   // 不拦截点击，点条仍然进播放页
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 3));
@@ -748,6 +754,11 @@ public class MainActivity extends Activity implements Player.Listener {
             o.put("albumId", song.albumId);
             o.put("coverArt", song.coverArt);
             o.put("duration", song.durationSec);
+            // 格式信息一起存：历史/队列恢复后「本地」标志、缓存文件名、DSD 建流都要用
+            o.put("suffix", song.suffix);
+            o.put("contentType", song.contentType);
+            o.put("bitrate", song.bitrate);
+            o.put("starred", song.starred);
             o.put("at", System.currentTimeMillis());
             out.put(o);
             for (int i = 0; i < arr.length() && out.length() < 100; i++) {
@@ -814,9 +825,17 @@ public class MainActivity extends Activity implements Player.Listener {
         Item cur = player.current();
         int total = durationMs > 0 ? durationMs
                 : (cur == null ? 0 : cur.durationSec * 1000);
-        if (total <= 0) { miniProgress.setProgress(0); return; }
+        if (total <= 0) {
+            miniProgress.setProgress(0);
+            miniProgress.setSecondaryProgress(0);
+            return;
+        }
         if (miniProgress.getMax() != total) miniProgress.setMax(total);
         miniProgress.setProgress(Math.max(0, Math.min(positionMs, total)));
+        // 浅色二级段 = 「边播边存」已经缓存到哪（与播放页进度条同一语义）。
+        // cachePercent 返回 -1 表示这首没在缓存 → 必须归零，否则上一首的缓存段会留在新歌上。
+        int cp = cur == null ? -1 : player.cachePercent(cur.id);
+        miniProgress.setSecondaryProgress(cp > 0 ? (int) (total * (cp / 100.0)) : 0);
     }
 
     private void updateMiniPlayer() {

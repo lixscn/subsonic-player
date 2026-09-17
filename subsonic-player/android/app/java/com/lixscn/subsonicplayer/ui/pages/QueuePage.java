@@ -110,6 +110,8 @@ public class QueuePage extends Page implements Player.Listener {
                 rowMenu(position);
             }
         });
+        // 队列是「正在播 / 接下来播什么」的地方：这里显示「本地」标志（浏览列表不显示）
+        adapter.showLocalBadge(true);
         list.setAdapter(adapter);
         holder.addView(list, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -240,6 +242,11 @@ public class QueuePage extends Page implements Player.Listener {
         c.track = s.track;
         c.starred = s.starred;
         c.listIndex = s.listIndex;
+        // 格式信息也要带上：列表的「本地」标志按 suffix/contentType 算缓存文件名，
+        // 不复制的话每首都算不出后缀，标志会全部不显示。
+        c.suffix = s.suffix;
+        c.contentType = s.contentType;
+        c.bitrate = s.bitrate;
         return c;
     }
 

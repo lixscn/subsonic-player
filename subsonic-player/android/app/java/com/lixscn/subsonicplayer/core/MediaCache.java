@@ -27,8 +27,14 @@ public final class MediaCache {
     /** 缓存目录名（与 Player 里使用的一致） */
     private static final String DIR = "sp-cache";
 
-    /** 缓存总上限：500MB。定这个值是因为高码率 WAV 一首可达 100MB+，太小会频繁失效。 */
-    public static final long MAX_BYTES = 500L * 1024 * 1024;
+    /**
+     * 缓存总上限：**4GB**（2026-09-17 由 500MB 调高）。
+     *
+     * <p>为什么要这么大：现在流式播放的曲目也会「边播边存」进这里，重播零流量。
+     * 但库里 flac 一首就 30~50MB，500MB 只装得下十来首，缓存形同虚设 —— 所以放宽到 4GB。
+     * 超出后仍按「最久未使用」淘汰，不会无限涨。
+     */
+    public static final long MAX_BYTES = 4L * 1024 * 1024 * 1024;
 
     private MediaCache() {
     }

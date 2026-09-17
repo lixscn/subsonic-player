@@ -64,6 +64,8 @@ public class NowPlayingPage extends Page {
     private TextView titleView;
     private TextView artistView;
     private TextView albumView;
+    /** 「本地」标志：这首已有完整缓存，重播零流量 */
+    private TextView localBadge;
 
     private SeekBar seekBar;
     private TextView posText;
@@ -111,6 +113,13 @@ public class NowPlayingPage extends Page {
             updatePlayIcon(playing);
             updateProgress(positionMs, durationMs);
             updateLyricHighlight(positionMs);
+            // 进度条的「浅色二级段」= 这首已经缓存到哪（边播边存进度）。
+            // cachePercent 返回 -1 表示这首没在缓存 → 必须归零，否则上一首的缓存段会留在新歌上。
+            Item cur = player.current();
+            int cp = (cur == null) ? -1 : player.cachePercent(cur.id);
+            if (seekBar != null) {
+                seekBar.setSecondaryProgress(cp > 0 ? (int) (seekBar.getMax() * (cp / 100.0)) : 0);
+            }
         }
 
         @Override
@@ -326,6 +335,14 @@ public class NowPlayingPage extends Page {
         Ui.tappable(albumView, act, c.textFaint);
         box.addView(albumView);
 
+        // 「本地」标志（已缓存整首）：居中放在专辑下面，没有缓存时完全不占位
+        localBadge = com.lixscn.subsonicplayer.ui.ItemAdapter.localBadge(act, c);
+        localBadge.setVisibility(View.GONE);
+        LinearLayout.LayoutParams blp = Ui.lp(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = Ui.dp(act, 2);
+        box.addView(localBadge, blp);
+
         return box;
     }
 
@@ -341,6 +358,9 @@ public class NowPlayingPage extends Page {
             seekBar.setProgressTintList(ColorStateList.valueOf(c.accent));
             seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(c.border));
             seekBar.setThumbTintList(ColorStateList.valueOf(c.accent));
+            // 缓存二级段：强调色的淡色（系统默认灰与这套配色不搭）
+            seekBar.setSecondaryProgressTintList(
+                    ColorStateList.valueOf(Ui.alpha(c.accent, 0.35f)));
         } catch (Throwable ignored) {
             // 极老的 ROM 上 tint 不可用，退回系统默认外观
         }
@@ -719,6 +739,7 @@ public class NowPlayingPage extends Page {
             artistView.setVisibility(View.GONE);
             albumView.setText("");
             albumView.setVisibility(View.GONE);
+            if (localBadge != null) localBadge.setVisibility(View.GONE);
             cover.setImageDrawable(null);
             cover.setBackground(Ui.rect(c.surfaceAlt, Ui.dp(act, 16)));
             posText.setText(SubsonicClient.fmtPos(0));
@@ -738,6 +759,10 @@ public class NowPlayingPage extends Page {
         artistView.setVisibility(artistView.getText().length() > 0 ? View.VISIBLE : View.GONE);
         albumView.setText(cur.album == null ? "" : cur.album);
         albumView.setVisibility(albumView.getText().length() > 0 ? View.VISIBLE : View.GONE);
+        // 「本地」标志：整首已缓存在本机（换歌时要跟着更新）
+        if (localBadge != null) {
+            localBadge.setVisibility(player.isCachedLocally(cur) ? View.VISIBLE : View.GONE);
+        }
 
         String url = "";
         if (cur.coverArt != null && cur.coverArt.length() > 0) url = lib.coverUrl(cur.coverArt, COVER_REQUEST_SIZE);

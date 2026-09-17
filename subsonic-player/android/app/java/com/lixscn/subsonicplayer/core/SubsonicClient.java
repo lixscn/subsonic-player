@@ -56,7 +56,8 @@ public class SubsonicClient {
 
     private boolean prefixKnown;
     private boolean trailingSlash;
-    private String activeUrl;
+    /** 当前使用的基础地址：会被「切网换地址」在后台线程改写，播放线程也会读，故 volatile */
+    private volatile String activeUrl;
 
     /**
      * 是否使用 token+salt 认证（Subsonic 标准）。

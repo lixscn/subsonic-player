@@ -41,6 +41,13 @@ public class ItemAdapter extends BaseAdapter {
     private final int mode;
     private final Listener listener;
     private final int gridColumns;
+    /**
+     * 是否显示「本地」标志。
+     *
+     * <p>只在**播放队列页**打开：那里是「正在播 / 接下来播什么」的地方，一眼能看出哪些不用走网络。
+     * 纯浏览列表（收藏 / 专辑 / 全部歌曲 / 搜索 / 最近播放…）保持干净，不加这个标签。
+     */
+    private boolean showLocalBadge;
 
     public ItemAdapter(Context ctx, List<Item> items, int mode, Listener listener) {
         this(ctx, items, mode, 3, listener);
@@ -52,6 +59,12 @@ public class ItemAdapter extends BaseAdapter {
         this.mode = mode;
         this.gridColumns = Math.max(2, gridColumns);
         this.listener = listener;
+    }
+
+    /** 打开「本地」标志（只有播放队列页需要；浏览列表默认不显示） */
+    public ItemAdapter showLocalBadge(boolean show) {
+        this.showLocalBadge = show;
+        return this;
     }
 
     @Override
@@ -81,6 +94,8 @@ public class ItemAdapter extends BaseAdapter {
         LinearLayout root;
         CircleCover cover;
         TextView title, subtitle, trailing;
+        /** 「本地」标志：这首已经在 sp-cache 里有完整文件，重播零流量 */
+        TextView local;
         ImageView more, chevron;
     }
 
@@ -91,6 +106,23 @@ public class ItemAdapter extends BaseAdapter {
         if (p == null) return false;
         Item cur = p.current();
         return cur != null && cur.id != null && cur.id.equals(it.id);
+    }
+
+    /** 这首是否已有完整本地缓存（画「本地」标志；内部只做一次 stat） */
+    private boolean isLocal(Item it) {
+        if (it == null || it.kind != Item.SONG || it.id == null || it.id.length() == 0) return false;
+        com.lixscn.subsonicplayer.player.Player p = com.lixscn.subsonicplayer.player.Player.peek();
+        return p != null && p.isCachedLocally(it);
+    }
+
+    /** 小圆角「本地」标志（列表行用） */
+    public static TextView localBadge(Context ctx, Theme.Colors t) {
+        TextView tv = Ui.text(ctx, "本地", 10, t.accent);
+        tv.setSingleLine(true);
+        tv.setGravity(Gravity.CENTER);
+        tv.setBackground(Ui.rect(Ui.alpha(t.accent, 0.16f), Ui.dp(ctx, 4)));
+        tv.setPadding(Ui.dp(ctx, 5), Ui.dp(ctx, 1), Ui.dp(ctx, 5), Ui.dp(ctx, 1));
+        return tv;
     }
 
     private View listView(final int position, View convertView, ViewGroup parent) {
@@ -119,6 +151,15 @@ public class ItemAdapter extends BaseAdapter {
 
             TextView trailing = Ui.text(ctx, "", 12, t.textFaint);
             trailing.setGravity(Gravity.CENTER);
+
+            // 「本地」标志（已缓存整首）：放在时长**左边**，窄一点，不抢主线信息
+            TextView local = localBadge(ctx, t);
+            LinearLayout.LayoutParams llp = Ui.lp(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            llp.rightMargin = Ui.dp(ctx, 6);
+            row.addView(local, llp);
+            local.setVisibility(View.GONE);
+
             row.addView(trailing, Ui.lp(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             ImageView more = Ui.icon(ctx, R.drawable.ic_more, 20, t.textDim);
@@ -136,6 +177,7 @@ public class ItemAdapter extends BaseAdapter {
             h.title = title;
             h.subtitle = subtitle;
             h.trailing = trailing;
+            h.local = local;
             h.more = more;
             h.chevron = chevron;
             row.setTag(h);
@@ -176,6 +218,9 @@ public class ItemAdapter extends BaseAdapter {
         } else {
             h.trailing.setTextColor(t.textFaint);
         }
+        // 「本地」标志：只有「整首已在 sp-cache 里」才显示（重播零流量、可离线）。
+        // 默认只在播放队列页打开（showLocalBadge），浏览列表不显示。
+        h.local.setVisibility(showLocalBadge && isLocal(it) ? View.VISIBLE : View.GONE);
         h.chevron.setVisibility(isSong ? View.GONE : View.VISIBLE);
         h.more.setVisibility(isSong ? View.VISIBLE : View.VISIBLE);
 

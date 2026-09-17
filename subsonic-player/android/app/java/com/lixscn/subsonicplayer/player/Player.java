@@ -11,6 +11,7 @@ import com.lixscn.subsonicplayer.player.bass.BassNative;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import com.lixscn.subsonicplayer.core.PlayLog;
 
 import com.lixscn.subsonicplayer.core.Item;
 import com.lixscn.subsonicplayer.core.Library;
@@ -156,6 +157,34 @@ public class Player {
     /** 是否已对本次 BASS 曲目做过"结束"收尾（防重复触发下一首） */
     private boolean bassCompletionHandled;
     private int bassRetryCount;
+    /** BASS 建流线程（BASS_StreamCreateURL 会同步做 DNS/TCP/TLS，占主线程会 ANR，真机日志已抓到） */
+    private final java.util.concurrent.ExecutorService bassExec =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+    /** 建流代次：切歌/停止时自增；后台建流回来对不上就丢弃这条流 */
+    private int bassGen;
+    /** 是否正在后台预取下一首（避免重复发起） */
+    private boolean bassPreloading;
+    /**
+     * 正在后台建流的曲目 id。
+     * 建流是异步的，这期间 {@code bassStream} 仍是 0；UI/通知栏/焦点回调此时再喊一次播放，
+     * 就会再起一条流。真机日志抓到过 0.5 秒内起 8 次、把整页歌刷过去的「跳歌雪崩」，
+     * 靠这个字段拦掉同曲重复起播。
+     */
+    private String bassPendingTrackId = "";
+    /** 本曲因「网络类错误」重试了几次（切歌清零）：链路是抖的，重试往往就成了 */
+    private int bassNetRetry;
+    /** 上一拍读到的 BASS 位置：用于「已到末尾且不再前进」的兜底结束判定 */
+    private int bassLastPos;
+    /** 到末尾后连续没前进的拍数（约 2 秒 → 判曲目结束） */
+    private int bassEndTicks;
+    /** 预取代次：切歌/释放时自增；后台预取回来对不上就丢弃，避免留下野流 */
+    private int preloadGen;
+    /** 已经安排过「后台预下载」的曲目 id（MP4 家族用；失败也不重试，见 prefetchMp4） */
+    private volatile String prefetchingTrackId = "";
+    /** 「边播边存」进度：正在缓存的曲目 id + 已下载字节 + 总字节（给进度条画浅色缓冲段用） */
+    private volatile String cacheSongId = "";
+    private volatile int cacheDownloaded;
+    private volatile int cacheTotal;
     /** 预取的下一首（BASS 流句柄 + 曲目 id）：后台先缓冲好，切歌时直接接管 */
     private long bassNextStream;
     private String bassNextTrackId = "";
@@ -195,13 +224,32 @@ public class Player {
                 boolean nearEnd = durationMs > 0 && positionMs >= durationMs - 1500;
                 // 曲目自然结束：BASS 没有 onCompletion 回调（MediaPlayer 才有），
                 // 所以必须在这里补上收尾逻辑 —— 否则播完就停在那，不会自动下一首。
-                if (st == 0 && nearEnd && !bassCompletionHandled && bassStream != 0) {
-                    bassCompletionHandled = true;
-                    Log.w(TAG, "BASS 曲目结束 → 按模式切下一首");
-                    main.removeCallbacks(ticker);
-                    onTrackFinished();
-                    return;
+                //
+                // ⚠️ 只判 st==0 是不够的（真机 2026-09-17 的日志抓到了漏判）：
+                // 歌放完时 BASS 有时停在 STALLED(3)（在等一个永远不会再来的数据包），
+                // 而下面的断流分支又故意跳过 nearEnd —— 两条分支都不触发，
+                // 界面就永远停在最后一秒、不切歌（用户反馈「不会自动下一首」）。
+                // 兜底：已经到末尾，且连续 4 拍（约 2 秒）位置不再前进 → 判结束。
+                if (nearEnd && !bassCompletionHandled && bassStream != 0) {
+                    if (st == 0) {
+                        bassEndTicks = 4;                    // BASS 自己说停了，直接判结束
+                    } else if (positionMs > bassLastPos) {
+                        bassEndTicks = 0;                    // 还在走，正常播
+                    } else {
+                        bassEndTicks++;
+                    }
+                    if (bassEndTicks >= 4) {
+                        bassCompletionHandled = true;
+                        PlayLog.w(TAG, "BASS 曲目结束 → 按模式切下一首 st=" + st
+                                + " pos=" + positionMs + "/" + durationMs);
+                        main.removeCallbacks(ticker);
+                        onTrackFinished();
+                        return;
+                    }
+                } else {
+                    bassEndTicks = 0;
                 }
+                bassLastPos = positionMs;
                 if (!nearEnd && (st == 0 || st == 3)) {
                     bassStallTicks++;
                     if (bassStallTicks >= 4) {           // 约 2 秒没恢复
@@ -210,7 +258,7 @@ public class Player {
                         if (sc != null && bassRetryCount < 3) {
                             bassRetryCount++;
                             int resumeAt = Math.max(0, positionMs);
-                            Log.w(TAG, "BASS 断流，重连第 " + bassRetryCount + " 次 pos=" + resumeAt + " state=" + st);
+                            PlayLog.w(TAG, "BASS 断流，重连第 " + bassRetryCount + " 次 pos=" + resumeAt + " state=" + st);
                             notifyError("网络中断，正在重连（第 " + bassRetryCount + "/3 次）…");
                             restoreSeekMs = resumeAt;
                             startWithBass(sc, library.streamUrl(sc.id));
@@ -219,7 +267,7 @@ public class Player {
                         if (sc != null && bassRetryCount >= 3) {
                             bassRetryCount = 4;          // 只提示一次
                             notifyError("网络中断，重连 3 次仍未成功，已停止");
-                            Log.w(TAG, "BASS 重连失败，放弃 song=" + sc.id);
+                            PlayLog.w(TAG, "BASS 重连失败，放弃 song=" + sc.id);
                         }
                     }
                 } else {
@@ -245,7 +293,7 @@ public class Player {
                                 bassTriedTrackId = sc.id;
                                 stalledTicks = 0;
                                 String su = library.streamUrl(sc.id);
-                                Log.w(TAG, "进度停滞，改用 BASS song=" + sc.id + " suffix=" + FormatSupport.suffixOf(sc));
+                                PlayLog.w(TAG, "进度停滞，改用 BASS song=" + sc.id + " suffix=" + FormatSupport.suffixOf(sc));
                                 if (su != null && su.length() > 0) { startWithBass(sc, su); return; }
                             }
                         }
@@ -272,6 +320,14 @@ public class Player {
         this.audioManager = (AudioManager) appCtx.getSystemService(Context.AUDIO_SERVICE);
         this.mode = library.settings().playMode();
         this.volumePercent = library.settings().volume();
+        // 切网后地址可能已被 Library 换掉（方案 A：只在当前地址真的不可用时才换）：
+        // 正在播的那条流还挂在旧地址上，必须用新地址断点续播。
+        library.setAddressListener(new Library.AddressListener() {
+            @Override
+            public void onAddressChanged(String url, long latencyMs) {
+                handleAddressChanged(url, latencyMs);
+            }
+        });
     }
 
     public static synchronized Player get(Context ctx) {
@@ -470,9 +526,46 @@ public class Player {
 
     // ---------------- 播放控制 ----------------
 
+    /**
+     * 网络切换、且地址**真的**换了（Library 回调，主线程）：正在播/正在缓冲就用新地址断点续播。
+     *
+     * <p>方案 A 只在当前地址不可用时才换地址，所以走到这里就意味着旧地址已经不通、
+     * 手上的流多半也断了 —— 直接用新地址重建，用户听到的是几秒的续播而不是「莫名停止」。
+     * 没在播放（暂停/停止）时只更新地址，下次起播自然会用新的。
+     */
+    private void handleAddressChanged(String url, long latencyMs) {
+        Item cur = current();
+        if (!playing && !buffering) {
+            PlayLog.w(TAG, "地址已切换（未在播放，仅更新地址）" + PlayLog.safeUrl(url));
+            return;
+        }
+        if (cur == null) return;
+        int resumeAt = Math.max(0, positionMs);
+        PlayLog.w(TAG, "地址已切换 → 断点续播 song=" + cur.id + " pos=" + resumeAt
+                + " 延迟=" + latencyMs + "ms url=" + PlayLog.safeUrl(url));
+        notifyError("网络已切换，正在用新地址续播…");
+        startCurrent(resumeAt);
+    }
+
+    /**
+     * 确保前台播放服务在跑。
+     *
+     * <p>通知栏 / 锁屏控制、以及「切到后台不被系统回收」都靠这个服务。以前只有
+     * {@code MainActivity.playNow()} 那条路会 {@code startService} —— 从**播放队列页**点歌、
+     * 按耳机键切歌、从云端恢复队列后起播，都绕过了它，于是**没有通知栏、退到后台还可能被杀**。
+     * 现在收敛到「真正起播」这一个点（startCurrent 是唯一入口），所有播放路径都覆盖。
+     */
+    private void ensureService() {
+        try {
+            appCtx.startService(new android.content.Intent(appCtx, PlaybackService.class));
+        } catch (Throwable ignored) {
+        }
+    }
+
     private void startCurrent(int seekMs) {
         Item cur = current();
         if (cur == null) return;
+        ensureService();
         restoreSeekMs = Math.max(0, seekMs);
         releasePlayer();
         durationMs = cur.durationSec > 0 ? cur.durationSec * 1000 : 0;
@@ -482,6 +575,9 @@ public class Player {
         preparing = true;
         buffering = true;
         bassRetryCount = 0;
+        bassNetRetry = 0;
+        bassLastPos = 0;
+        bassEndTicks = 0;
         bassStallTicks = 0;
         notifyTrack();
         notifyProgress();
@@ -489,10 +585,11 @@ public class Player {
         String url = library.streamUrl(cur.id);
         if (url == null || url.length() == 0) {
             preparing = false;
+            buffering = false;      // 必须一起清：否则界面永远停在「缓冲中…」（用户以为在加载，其实什么都没发生）
             notifyError("无法获取播放地址");
             return;
         }
-        // ---- 引擎选择：系统解码器搞不定的格式交给 BASS ----
+        // ---- 引擎选择：BASS 优先，MP4/M4A 交给系统解码器（它能用 Range 请求取尾部 moov） ----
         FormatSupport.Engine engine = FormatSupport.engineFor(cur, BassNative.available());
         if (engine == FormatSupport.Engine.BASS) {
             startWithBass(cur, url);
@@ -504,6 +601,10 @@ public class Player {
             notifyError("无法播放：" + FormatSupport.unsupportedReason(cur));
             return;
         }
+        PlayLog.init(appCtx);
+        PlayLog.i("engine=SYSTEM song=" + cur.id + " title=" + (cur.title == null ? "" : cur.title)
+                + " suffix=" + FormatSupport.suffixOf(cur) + " bitrate=" + cur.bitrate
+                + " url=" + PlayLog.safeUrl(url));
         try {
             mp = new MediaPlayer();
             mp.setAudioAttributes(new AudioAttributes.Builder()
@@ -535,7 +636,7 @@ public class Player {
                             // 关键：先拿音频焦点再出声，否则部分 ROM（MIUI）不出声音
                             if (!acquireFocus()) {
                                 playing = false;
-                                Log.w(TAG, "音频焦点被拒，未开始播放");
+                                PlayLog.w(TAG, "音频焦点被拒，未开始播放");
                                 notifyError("无法获取音频焦点，已暂停（可能有其他应用正在播放）");
                                 notifyProgress();
                                 return;
@@ -545,7 +646,7 @@ public class Player {
                             main.removeCallbacks(ticker);
                             main.post(ticker);
                         } catch (Exception e) {
-                            Log.w(TAG, "start() 抛异常", e);
+                            PlayLog.w(TAG, "start() 抛异常", e);
                             notifyError("播放失败：" + e.getMessage());
                         }
                     }
@@ -567,7 +668,7 @@ public class Player {
                     preparing = false;
                     playing = false;
                     buffering = false;
-                    Log.w(TAG, "MediaPlayer 错误 what=" + what + " extra=" + extra
+                    PlayLog.w(TAG, "MediaPlayer 错误 what=" + what + " extra=" + extra
                             + " song=" + (current() == null ? "?" : current().id));
                     // ① 先判断是不是「系统解码器解不了这个格式」——是就改用 BASS 重试一次。
                     //    这是覆盖所有漏网格式的关键：不依赖码率/后缀的预判，失败即兜底。
@@ -576,7 +677,7 @@ public class Player {
                         bassTriedTrackId = cur.id;
                         String u = library.streamUrl(cur.id);
                         if (u != null && u.length() > 0) {
-                            Log.w(TAG, "系统解码器失败，改用 BASS 重试 song=" + cur.id
+                            PlayLog.w(TAG, "系统解码器失败，改用 BASS 重试 song=" + cur.id
                                     + " suffix=" + FormatSupport.suffixOf(cur)
                                     + " what=" + what + " extra=" + extra);
                             notifyError("系统解码器不支持，正在用 BASS 重试…");
@@ -623,61 +724,149 @@ public class Player {
             preparing = false;
             playing = false;
             buffering = false;
-            Log.w(TAG, "MediaPlayer 创建/配置失败: " + e, e);
+            PlayLog.w(TAG, "MediaPlayer 创建/配置失败: " + e, e);
             notifyError("无法播放：" + e.getMessage());
         }
     }
 
     /**
-     * 用 BASS 播放当前曲目。
+     * 用 BASS 播放当前曲目 —— 除 MP4/M4A 外所有格式的常规路径。
      *
-     * <p>为什么需要：安卓系统解码器（MediaPlayer）解不了 DSD(.dsf)、APE、WavPack，
-     * 以及高码率 WAV（24/32bit）—— 服务端又不转码，这些曲子在上面就是「点了没反应」。
+     * <p>走这条路的理由：系统解码器解不了 DSD(.dsf)/APE/WavPack/高码率 WAV/FLAC，
+     * 而且对一部分文件会「假播放」（prepare 成功、报在播放、就是没声）。
      * BASS 自带这些解码器（见 jniLibs 里的 libbass*.so）。
      *
-     * <p>只在这类格式上走这条路；其余曲目仍由 MediaPlayer 播放，通知栏/焦点链路完全不变。
+     * <p>为什么 MP4/M4A 反而**不**走这里：本库的 m4a 多为 moov 在文件末尾（非 faststart），
+     * BASS 的 URL 流式解码会直接回 {@code 47 UNSTREAMABLE}；系统 MediaPlayer 能用 HTTP Range
+     * 请求取回尾部 moov 再播。分流规则见 {@link FormatSupport#engineFor}，理由见 FormatSupport 类注释。
      */
-    private void startWithBass(Item song, String url) {
-        try {
-            // 先把预取句柄取出来：这样后面的 releasePlayer() 不会把它一起释放掉
-            long preloaded = 0;
-            if (song != null && song.id != null && song.id.equals(bassNextTrackId) && bassNextStream != 0) {
-                preloaded = bassNextStream;
-                bassNextStream = 0;
-            }
-            // 关键：先把 MediaPlayer 与旧 ticker 彻底停掉，再开 BASS。
-            // 否则在「进度停滞 / 解码失败 → 切 BASS」这条路径上，MediaPlayer 可能仍在出声，
-            // 两套引擎同时输出就是用户听到的「重音」。
+    private void startWithBass(final Item song, final String url) {
+        // 拦掉「同一首在建流途中被重复起播」——否则每次都会新起一条流并作废上一条，
+        // 界面表现为歌曲被飞快跳过（真机日志：0.5 秒内 8 次）。
+        if (buffering && song != null && song.id != null && song.id.equals(bassPendingTrackId)) {
+            PlayLog.w(TAG, "建流已在途，忽略重复起播 song=" + song.id + " gen=" + bassGen);
+            return;
+        }
+        // 缓存优先：这首已经在 sp-cache 里（之前边播边存过 / m4a 下载过）→ 直接本地播，**零流量**
+        java.io.File hit = cachedFileIfAny(song);
+        if (hit != null && hit.exists() && hit.length() > 20000) {
+            PlayLog.w(TAG, "命中缓存，本地播放（零流量）" + hit.getName() + " " + (hit.length() / 1024) + " KB");
             main.removeCallbacks(ticker);
-            releasePlayer();          // 内部会 releaseBassStream() + mp.release()
+            releasePlayer();
             playing = false;
-            if (!bassInited) {
-                bassInited = BassNative.nativeInit(-1, 44100);
-                if (!bassInited) {
-                    preparing = false;
-                    buffering = false;
-                    notifyError("BASS 初始化失败（错误码 " + BassNative.nativeErrorCode() + "）");
-                    return;
-                }
-            }
             releaseBassStream();
             bassStallTicks = 0;
             bassCompletionHandled = false;
-            String suffix = FormatSupport.suffixOf(song);
-            boolean dsd = "dsf".equals(suffix) || "dff".equals(suffix);
-            if (preloaded != 0) {
+            bassPendingTrackId = "";
+            startWithBassLocal(song, hit.getAbsolutePath());
+            return;
+        }
+        // 先把预取句柄取出来：这样后面的 releasePlayer() 不会把它一起释放掉
+        final long preloaded;
+        if (song != null && song.id != null && song.id.equals(bassNextTrackId) && bassNextStream != 0) {
+            preloaded = bassNextStream;
+            bassNextStream = 0;
+        } else {
+            preloaded = 0;
+        }
+        // 关键：先把 MediaPlayer 与旧 ticker 彻底停掉，再开 BASS。
+        // 否则在「进度停滞 / 解码失败 → 切 BASS」这条路径上，MediaPlayer 可能仍在出声，
+        // 两套引擎同时输出就是用户听到的「重音」。
+        main.removeCallbacks(ticker);
+        releasePlayer();          // 内部会 releaseBassStream() + mp.release()
+        playing = false;
+        releaseBassStream();
+        bassStallTicks = 0;
+        bassCompletionHandled = false;
+
+        // BASS_StreamCreateURL 会同步做 DNS 解析 → TCP → TLS 握手（移动网络下要数秒）。
+        // 它原先跑在主线程，真机日志抓到了 ANR：
+        //   native: getaddrinfo → BASS_StreamCreateURL → nativeStreamCreateUrl → startWithBass
+        // 现在主线程只做状态切换，建流丢到后台线程，完成后回主线程收尾。
+        final int gen = ++bassGen;
+        bassPendingTrackId = song.id == null ? "" : song.id;
+        final String suffix = FormatSupport.suffixOf(song);
+        final boolean dsd = "dsf".equals(suffix) || "dff".equals(suffix);
+        PlayLog.init(appCtx);
+        PlayLog.i("engine=BASS gen=" + gen + " song=" + song.id
+                + " title=" + (song.title == null ? "" : song.title)
+                + " suffix=" + suffix + " dsd=" + dsd
+                + " preloaded=" + (preloaded != 0)
+                + " bitrate=" + song.bitrate
+                + " url=" + PlayLog.safeUrl(url));
+        buffering = true;                    // 等待期间显示「缓冲中…」，而不是界面卡死
+        notifyProgress();
+        bassExec.execute(new Runnable() {
+            @Override
+            public void run() {
+                long h = preloaded;
+                int createErr = 0;
+                boolean initFail = false;
+                long t0 = android.os.SystemClock.elapsedRealtime();
+                try {
+                    if (h == 0) {
+                        if (!bassInited) {
+                            bassInited = BassNative.nativeInit(-1, 44100);
+                            if (!bassInited) initFail = true;
+                        }
+                        if (!initFail) {
+                            h = dsd ? BassNative.nativeDsdStreamCreateUrl(url)
+                                    : BassNative.nativeStreamCreateUrl(url);
+                            // 错误码是「按线程」保存的：必须在建流这个线程里取，回主线程再问已经晚了
+                            if (h == 0) createErr = BassNative.nativeErrorCode();
+                        }
+                    }
+                } catch (Throwable t) {
+                    createErr = -1;
+                }
+                PlayLog.i("创建完成 gen=" + gen + " handle=" + h + " err=" + createErr
+                        + " initFail=" + initFail
+                        + " 耗时=" + (android.os.SystemClock.elapsedRealtime() - t0) + "ms"
+                        + " 线程=" + Thread.currentThread().getName());
+                final long fh = h;
+                final int ferr = createErr;
+                final boolean finitFail = initFail;
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (gen != bassGen) {
+                            PlayLog.w("丢弃过期建流 gen=" + gen + " 当前=" + bassGen + " handle=" + fh);
+                            // 建流期间用户已经切歌/停止：丢掉这条流，否则会和新流一起出声
+                            if (fh != 0) {
+                                try {
+                                    BassNative.nativeStop(fh);
+                                    BassNative.nativeFreeStream(fh);
+                                } catch (Throwable ignored) {
+                                }
+                            }
+                            return;
+                        }
+                        finishBassStart(song, url, fh, ferr, finitFail, preloaded != 0);
+                    }
+                });
+            }
+        });
+    }
+
+    /** 建流完成后回到主线程的收尾（即原 startWithBass 的后半段逻辑） */
+    private void finishBassStart(Item song, String url, long h, int createErr, boolean initFail, boolean usedPreload) {
+        bassPendingTrackId = "";
+        try {
+            if (initFail) {
+                preparing = false;
+                buffering = false;
+                notifyError("BASS 初始化失败（错误码 " + BassNative.nativeErrorCode() + "）");
+                return;
+            }
+            bassStream = h;
+            if (usedPreload && bassStream != 0) {
                 // 预取命中：直接用已经缓冲好的流，省掉建流+起播等待（大文件差别最明显）
-                bassStream = preloaded;
-                Log.w(TAG, "接管预取流 song=" + song.id + " suffix=" + suffix);
-            } else {
-                bassStream = dsd
-                        ? BassNative.nativeDsdStreamCreateUrl(url)
-                        : BassNative.nativeStreamCreateUrl(url);
+                PlayLog.w(TAG, "接管预取流 song=" + song.id + " suffix=" + FormatSupport.suffixOf(song));
             }
             if (bassNextTrackId.equals(song.id)) { bassNextTrackId = ""; }
             if (bassStream == 0) {
-                int err = BassNative.nativeErrorCode();
-                Log.w(TAG, "BASS 建流失败 code=" + err + " song=" + song.id);
+                int err = createErr != 0 ? createErr : BassNative.nativeErrorCode();
+                PlayLog.w(TAG, "BASS 建流失败 code=" + err + " song=" + song.id);
                 // 47=UNSTREAMABLE 41=FILEFORM 44=CODEC：
                 // 典型是 MP4/M4A 的 moov 在文件末尾 —— 必须拿到整个文件才能解码，无法流式播放。
                 // 这类文件下载到本地就能正常播，所以改成「先整段下载再播」（现在 CDN 4MB/s，2MB 半秒）。
@@ -685,11 +874,46 @@ public class Player {
                     downloadThenPlay(song, url);
                     return;
                 }
+                // ★ 网络类错误（40 超时 / 32 无网络 / 10 SSL / 48 协议 / 49 拒绝）先重试，别急着判死刑。
+                // 实测手机到 Cloudflare 这一跳会在 20KB/s ⇄ 450KB/s 之间剧烈波动，
+                // 建流赶上低谷就超时；以前直接报「打不开此曲」并停下 —— 用户看到的就是「无故停了不播放」。
+                if (isNetworkError(err) && bassNetRetry < 3) {
+                    bassNetRetry++;
+                    final int attempt = bassNetRetry;
+                    PlayLog.w(TAG, "BASS 网络错误 code=" + err + "，第 " + attempt + "/3 次重试 song=" + song.id
+                            + (attempt == 1 ? "（先换地址）" : "（同一地址）"));
+                    buffering = true;
+                    notifyProgress();
+                    if (attempt == 1) {
+                        // 第 1 次重试**先换地址**：切网后（出门/回家）旧地址多半已经不可达，
+                        // 在原地重试 3 次只会白耗二十多秒 —— 用户看到的就是「一出门就播不了」。
+                        notifyError("网络异常，正在切换地址重试…");
+                        library.reconnectAlternate(new Library.Done<Boolean>() {
+                            @Override
+                            public void ok(Boolean switched) {
+                                if (switched != null && switched.booleanValue()) {
+                                    PlayLog.w(TAG, "已换到新地址，重试 song=" + song.id);
+                                } else {
+                                    PlayLog.w(TAG, "没有可用备选地址，原地重试 song=" + song.id);
+                                }
+                                retryBassAfterDelay(song, attempt);
+                            }
+
+                            @Override
+                            public void fail(String message) {
+                                retryBassAfterDelay(song, attempt);
+                            }
+                        });
+                    } else {
+                        notifyError("网络异常，正在重试（第 " + attempt + "/3 次）…");
+                        retryBassAfterDelay(song, attempt);
+                    }
+                    return;
+                }
                 // 只有「文件本身的问题」才自动跳过：
                 //   2 = FILEOPEN   服务器上没有这个文件（曲库记录与磁盘不一致）
                 //   41 = FILEFORM  格式不支持   44 = CODEC 解码不可用   47 = UNSTREAMABLE 不可流式
-                // 网络类错误（40 超时 / 24 无网络 / 10 SSL / 8 初始化…）一律不跳过 ——
-                // 那是暂时性的：跳过会让用户在网络抖动时莫名丢歌，交给重连逻辑处理更合适。
+                // 网络类错误一律不跳过 —— 跳过会让用户在网络抖动时莫名丢歌。
                 if (err == 2 || err == 41 || err == 44 || err == 47) {
                     if (skipBrokenTrack("这首歌在服务器上找不到或无法解码（错误码 " + err + "）")) return;
                 }
@@ -700,6 +924,8 @@ public class Player {
             }
             BassNative.nativeSetVolume(bassStream,
                     Math.max(0f, Math.min(1f, volumePercent / 100f)) * duckFactor);
+            // URL 流刚建好时这一次 seek 经常失败（BASS 还没拿到足够数据做「秒 ↔ 字节」换算），
+            // 所以只当「尽力而为」，真正的定位交给起播后的 seekAfterStart 重试。
             if (restoreSeekMs > 0) BassNative.nativeSeekSec(bassStream, restoreSeekMs / 1000.0);
 
             preparing = false;
@@ -712,7 +938,7 @@ public class Player {
             boolean ok = BassNative.nativePlay(bassStream, true);
             playing = ok && playWhenReady;
             buffering = false;
-            Log.w(TAG, "BASS 播放 song=" + song.id + " suffix=" + suffix
+            PlayLog.w(TAG, "BASS 播放 song=" + song.id + " suffix=" + FormatSupport.suffixOf(song)
                     + " ok=" + ok + " dur=" + BassNative.nativeDurationSec(bassStream));
             if (!playing) {
                 notifyError("BASS 播放失败（错误码 " + BassNative.nativeErrorCode() + "）");
@@ -720,14 +946,43 @@ public class Player {
                 main.removeCallbacks(ticker);
                 main.post(ticker);
                 library.scrobble(song.id, false);
+                cacheInBackground(song);   // 边播边存：下次重播零流量（受流量模式约束）
+                if (restoreSeekMs > 0) seekAfterStart(bassStream, restoreSeekMs);
             }
             notifyProgress();
         } catch (Throwable t) {
             preparing = false;
             buffering = false;
-            Log.w(TAG, "BASS 播放异常", t);
+            PlayLog.w(TAG, "BASS 播放异常", t);
             notifyError("BASS 播放异常：" + t.getMessage());
         }
+    }
+
+    /**
+     * 起播后再补一次「断点续播」定位（URL 流专用）。
+     *
+     * <p>为什么需要：{@code BASS_ChannelSetPosition} 在 URL 流刚建好时经常返回 false
+     * ——BASS 还没缓冲到足够的数据做「秒 ↔ 字节」换算。真机实测切网续播会因此**从 0 开始**，
+     * 用户听到的是「歌从头放了」。这里在起播后按 0.6s、1.2s… 退避重试几次，到位就停。
+     */
+    private void seekAfterStart(final long handle, final int targetMs) {
+        final int[] tries = {0};
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                if (handle == 0 || bassStream != handle) return;      // 已经切歌/停止
+                if (tries[0] > 0) {
+                    long nowMs = Math.round(BassNative.nativePositionSec(handle) * 1000);
+                    if (nowMs >= targetMs - 4000) return;             // 已经到位，不再打扰
+                }
+                boolean ok = BassNative.nativeSeekSec(handle, targetMs / 1000.0);
+                tries[0]++;
+                PlayLog.w(TAG, "续播定位第 " + tries[0] + " 次 target=" + targetMs + "ms ok=" + ok
+                        + " pos=" + Math.round(BassNative.nativePositionSec(handle) * 1000) + "ms");
+                if (tries[0] < 6) main.postDelayed(this, 600L * tries[0]);
+            }
+        };
+        main.postDelayed(r, 300);
     }
 
     /**
@@ -748,31 +1003,86 @@ public class Player {
 
     /**
      * 提前把下一首的 BASS 流建好（BASS 会立刻在后台下载缓冲），切歌时直接接管。
-     * 只在临近曲尾（40 秒内）才开始，避免长时间两条流同时占带宽；
-     * 只预取 BASS 曲目 —— 系统 MediaPlayer 没办法后台预热另一条流。
+     * 只在临近曲尾（40 秒内）才开始，避免长时间两条流同时占带宽。
+     *
+     * <p>现在全曲库都走 BASS，所以每首歌临近结尾都会预取 —— 而
+     * {@code BASS_StreamCreateURL} 是**同步阻塞**的（DNS→TCP→TLS，移动网要数秒），
+     * 放主线程就是 ANR（真机已抓到过）。因此建流同样丢到 {@link #bassExec}，
+     * 主线程只负责发起与收留结果。
      */
     private void preloadNext() {
-        if (bassNextStream != 0) return;
         if (!BassNative.available()) return;
-        if (durationMs <= 0 || positionMs < durationMs - 40000) return;
+        if (!mayUseDataForPrefetch()) return;   // 省流模式下蜂窝网不做任何预取
         Item cur = current();
-        Item next = peekNext();
+        final Item next = peekNext();
         if (next == null || cur == null || next.id.equals(cur.id)) return;
+        // MP4/M4A 流式放不了（moov 在尾部）：预取改成「提前把整首下好」。
+        // 它比建流慢得多（整首 vs 几秒缓冲），所以要早开始 —— 只等当前曲目起播 5 秒就让带宽。
+        if (FormatSupport.isMp4Family(FormatSupport.suffixOf(next))) {
+            // m4a 的预取是「整首下载」，很费流量：开始太早，一旦用户切歌就整首都白下了。
+            // 实测 3.7MB 约 13 秒下完，所以留最后 2 分钟开始就够，别一开播就下。
+            if (durationMs <= 0 || positionMs < durationMs - 120000) return;
+            prefetchMp4(next);
+            return;
+        }
+        if (bassNextStream != 0 || bassPreloading) return;
+        // 流式预取只在曲尾 15 秒内开始（原先 40 秒）：越早开始，切歌/停止时浪费的流量越多
+        if (durationMs <= 0 || positionMs < durationMs - 15000) return;
         if (FormatSupport.engineFor(next, true) != FormatSupport.Engine.BASS) return;
-        String url = library.streamUrl(next.id);
+        final String url = library.streamUrl(next.id);
         if (url == null || url.length() == 0) return;
-        String suffix = FormatSupport.suffixOf(next);
-        boolean dsd = "dsf".equals(suffix) || "dff".equals(suffix);
-        long h = dsd ? BassNative.nativeDsdStreamCreateUrl(url)
-                     : BassNative.nativeStreamCreateUrl(url);
-        if (h == 0) return;
-        bassNextStream = h;
-        bassNextTrackId = next.id;
-        Log.w(TAG, "已预取下一首 song=" + next.id + " suffix=" + suffix);
+        final String suffix = FormatSupport.suffixOf(next);
+        final boolean dsd = "dsf".equals(suffix) || "dff".equals(suffix);
+        final int pgen = ++preloadGen;
+        bassPreloading = true;
+        PlayLog.i("预取发起 song=" + next.id + " suffix=" + suffix + " dsd=" + dsd);
+        bassExec.execute(new Runnable() {
+            @Override
+            public void run() {
+                long h = 0;
+                int err = 0;
+                long t0 = android.os.SystemClock.elapsedRealtime();
+                try {
+                    h = dsd ? BassNative.nativeDsdStreamCreateUrl(url)
+                            : BassNative.nativeStreamCreateUrl(url);
+                    if (h == 0) err = BassNative.nativeErrorCode();   // 错误码按线程保存，必须在这条线程取
+                } catch (Throwable t) {
+                    err = -1;
+                }
+                final long fh = h;
+                final int ferr = err;
+                final long cost = android.os.SystemClock.elapsedRealtime() - t0;
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        bassPreloading = false;
+                        if (fh == 0) {
+                            // 预取失败不影响当前播放：切歌时现建流就行，只是慢一点
+                            PlayLog.i("预取失败 song=" + next.id + " err=" + ferr + " 耗时=" + cost + "ms");
+                            return;
+                        }
+                        if (pgen != preloadGen || bassNextStream != 0) {
+                            PlayLog.w("丢弃过期预取 song=" + next.id + " handle=" + fh);
+                            try {
+                                BassNative.nativeStop(fh);
+                                BassNative.nativeFreeStream(fh);
+                            } catch (Throwable ignored) {
+                            }
+                            return;
+                        }
+                        bassNextStream = fh;
+                        bassNextTrackId = next.id;
+                        PlayLog.i("预取完成 song=" + next.id + " handle=" + fh + " 耗时=" + cost + "ms");
+                    }
+                });
+            }
+        });
     }
 
     /** 释放预取流（没被接管时） */
     private void releaseBassNext() {
+        preloadGen++;          // 让还在后台建的预取流作废
+        bassPreloading = false;
         if (bassNextStream != 0) {
             try {
                 BassNative.nativeStop(bassNextStream);
@@ -784,56 +1094,300 @@ public class Player {
         }
     }
 
-    /**
-     * 「先下载后播」：用于 BASS 报 UNSTREAMABLE 的文件（如 moov 在末尾的 M4A）。
-     * 下载到应用缓存目录，再用本地文件建流；同一首第二次播放直接命中缓存，秒开。
-     */
-    private void downloadThenPlay(final Item song, final String url) {
+    /** 只查缓存文件在不在（不做容量裁剪，可以放心在主线程调用） */
+    private java.io.File cachedFileIfAny(Item song) {
+        if (song == null || song.id == null) return null;
         try {
-            // 下载前先按上限裁剪缓存（500MB，最久未使用的先删），避免越堆越多吃掉用户存储
+            java.io.File dir = com.lixscn.subsonicplayer.core.MediaCache.dir(appCtx);
+            String ext = FormatSupport.suffixOf(song);
+            if (ext.length() == 0) ext = "bin";
+            java.io.File f = new java.io.File(dir, song.id + "." + ext);
+            if (f.isFile()) return f;
+            // 后缀是从 contentType 兜底出来的、或以前服务端没给后缀时，老缓存的文件名是 <id>.bin。
+            // 名字对不上就当「没缓存」会白丢已经下好的数据（还会重新走一遍网络），所以回退查一次。
+            if (!"bin".equals(ext)) {
+                java.io.File legacy = new java.io.File(dir, song.id + ".bin");
+                if (legacy.isFile()) return legacy;
+            }
+            return f;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 这首是否已有**完整的本地缓存**（{@code sp-cache} 里的整首文件）。
+     *
+     * <p>给界面画「本地」标志用：只做一次 stat，主线程可以调。
+     * 正在下载（只有 .part）不算 —— 那时还没法离线播。
+     */
+    public boolean isCachedLocally(Item song) {
+        java.io.File f = cachedFileIfAny(song);
+        return f != null && f.isFile() && f.length() > 20000;
+    }
+
+    /** 当前活动网络是否计费（蜂窝 / 热点）。判断不出来时按「计费」处理 —— 省流量优先。 */
+    private boolean isMeteredNetwork() {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                    appCtx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            return cm == null || cm.isActiveNetworkMetered();
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    /**
+     * 当前是否允许「预取 / 缓存」。受设置里的流量模式约束：
+     * {@code 0}=省流（蜂窝不做，默认） {@code 1}=标准（都做） {@code 2}=关闭（都不做）。
+     */
+    private boolean mayUseDataForPrefetch() {
+        int m = library.settings().dataMode();
+        if (m == 2) return false;
+        if (m == 0) return !isMeteredNetwork();
+        return true;
+    }
+
+    /**
+     * 「边播边存」：正在流式播放的曲子，后台整首存进 {@code sp-cache}，下次重播**零流量**。
+     *
+     * <p>代价是首次会多下一遍（用户已确认接受），所以只在 {@link #mayUseDataForPrefetch()} 允许时做
+     * —— 默认「省流」模式即**只在 WiFi 下**才缓存，蜂窝永远不额外花流量。
+     */
+    /**
+     * 正在后台缓存的曲目进度（0-100）；{@code -1} 表示这首没有在缓存。给播放页进度条画「已缓存」用。
+     */
+    public int cachePercent(String songId) {
+        if (songId == null || !songId.equals(cacheSongId)) return -1;
+        if (cacheTotal <= 0) return 0;
+        int p = (int) (cacheDownloaded * 100L / cacheTotal);
+        return Math.max(0, Math.min(100, p));
+    }
+
+    private void cacheInBackground(final Item song) {
+        if (song == null || song.id == null) return;
+        if (!mayUseDataForPrefetch()) return;
+        if (song.id.equals(prefetchingTrackId)) return;              // 已经在下载 / 已经下过
+        java.io.File probe = cachedFileIfAny(song);
+        if (probe != null && probe.exists() && probe.length() > 20000) return;   // 已缓存
+        final String url = library.streamUrl(song.id);
+        if (url == null || url.length() == 0) return;
+        prefetchingTrackId = song.id;
+        cacheSongId = song.id;          // 进度条据此显示「正在缓存这首」的进度
+        cacheDownloaded = 0;
+        cacheTotal = 0;
+        PlayLog.i("边播边存发起 song=" + song.id);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                java.io.File out = cacheFileFor(song);               // 含容量裁剪，放后台线程做
+                if (out == null || (out.exists() && out.length() > 20000)) return;
+                downloadToFile(url, out, "边播边存", song);
+            }
+        }).start();
+    }
+
+    /** 曲目在下载缓存里的目标文件（顺带做一次容量裁剪，避免越下越多吃掉用户存储） */
+    private java.io.File cacheFileFor(Item song) {
+        if (song == null || song.id == null) return null;
+        try {
             com.lixscn.subsonicplayer.core.MediaCache.prune(appCtx,
                     com.lixscn.subsonicplayer.core.MediaCache.MAX_BYTES);
             java.io.File dir = com.lixscn.subsonicplayer.core.MediaCache.dir(appCtx);
             String ext = FormatSupport.suffixOf(song);
             if (ext.length() == 0) ext = "bin";
-            final java.io.File out = new java.io.File(dir, song.id + "." + ext);
-            if (out.exists() && out.length() > 20000) {      // 命中缓存
-                Log.w(TAG, "命中下载缓存 " + out.getName() + " (" + out.length() + " B)");
+            return new java.io.File(dir, song.id + "." + ext);
+        } catch (Throwable t) {
+            PlayLog.w(TAG, "缓存目录不可用", t);
+            return null;
+        }
+    }
+
+    /**
+     * BASS 网络错误后的延迟重试（「先换地址」与「原地重试」共用）。
+     *
+     * <p>URL 在这里才现取：等待期间地址可能已经被换成内网/外网另一个，
+     * 直接用 captured 的旧 URL 重试等于白换。
+     */
+    private void retryBassAfterDelay(final Item song, final int attempt) {
+        main.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Item c = current();
+                if (c == null || song.id == null || !song.id.equals(c.id)) return;
+                startWithBass(song, library.streamUrl(song.id));
+            }
+        }, 1200L * attempt);
+    }
+
+    /**
+     * BASS 错误码里属于「这一跳暂时不通」的：值得稍后重试，而不是判定这首放不了。
+     * 40=TIMEOUT 32=NONET 10=SSL 48=PROTOCOL 49=DENIED。
+     */
+    private static boolean isNetworkError(int err) {
+        return err == 40 || err == 32 || err == 10 || err == 48 || err == 49;
+    }
+
+    /**
+     * 把 url 整段下到 out（先写 .part 再改名）。可在任意线程调用。
+     *
+     * <p>为什么不用 MediaPlayer 的流式方案：mp4 家族要取尾部 moov，它会反复发 Range 请求，
+     * 每次连接跨境要 0.5~11 秒；一条顺序连接直接下完整首反而快得多。
+     *
+     * <p>失败会整个重来一次：链路是抖的（实测 20KB/s ⇄ 450KB/s），重试往往就成了。
+     * 重试前会**按曲目重新解析一次地址**：切网换地址后旧地址（多半是内网）已经不通，
+     * 拿旧 URL 再撞一次 8 秒超时纯属浪费（真机日志里满屏这种「边播边存下载失败」）。
+     *
+     * @return 是否成功（文件 > 20KB 才算成功）
+     */
+    private boolean downloadToFile(String url, java.io.File out, String tag, Item song) {
+        String useUrl = url;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            if (attempt > 1 && song != null && song.id != null) {
+                String fresh = library.streamUrl(song.id);
+                if (fresh != null && fresh.length() > 0 && !fresh.equals(useUrl)) {
+                    PlayLog.w(TAG, tag + "重试改用新地址 " + PlayLog.safeUrl(fresh));
+                    useUrl = fresh;
+                }
+            }
+            long total = 0;
+            java.io.File tmp = new java.io.File(out.getAbsolutePath() + ".part");
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(useUrl).openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(30000);
+                c.setInstanceFollowRedirects(true);
+                java.io.InputStream in = c.getInputStream();
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(tmp);
+                final int contentLen = c.getContentLength();     // 进度条要用总长（未知则 0）
+                if (contentLen > 0) { cacheTotal = contentLen; cacheDownloaded = 0; }
+                byte[] buf = new byte[32768];
+                int n;
+                long t0 = android.os.SystemClock.elapsedRealtime();
+                // 后台下载（预取/边播边存）限速：实测不限速时均速只有 114KB/s 却仍在和播放抢带宽，
+                // 会把正在播放的流饿死 → 卡顿。前台下载（用户正等着听）不限速。
+                final long maxBps = "前台".equals(tag) ? 0L : 80L * 1024;
+                boolean aborted = false;
+                int tick = 0;
+                while ((n = in.read(buf)) > 0) {
+                    fos.write(buf, 0, n);
+                    total += n;
+                    cacheDownloaded = (int) Math.min(total, Integer.MAX_VALUE);   // 进度条实时值
+                    // 省流模式：下载途中切到蜂窝（WiFi 出门/断开）不该继续把整首下完 ——
+                    // 用户设置「省流（仅 WiFi）」就是这个意思，不查的话一出门就偷偷吃掉几十 MB。
+                    // 每 ~1MB 查一次（计费判定要走 ConnectivityManager，别每 32KB 都问）。
+                    if (maxBps > 0 && ++tick >= 32) {
+                        tick = 0;
+                        if (!mayUseDataForPrefetch()) {
+                            aborted = true;
+                            break;
+                        }
+                    }
+                    if (maxBps > 0) {
+                        long el = android.os.SystemClock.elapsedRealtime() - t0;
+                        long want = total * 1000L / maxBps;      // 按这个速度本该用掉的时间
+                        if (want > el) {
+                            try {
+                                Thread.sleep(Math.min(300L, want - el));
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                    }
+                }
+                fos.flush();
+                fos.close();
+                in.close();
+                if (aborted) {
+                    PlayLog.w(TAG, tag + "下载中止：网络已切到蜂窝（省流模式）"
+                            + "，已下 " + (total / 1024) + " KB");
+                    tmp.delete();
+                    return false;
+                }
+                long ms = Math.max(1, android.os.SystemClock.elapsedRealtime() - t0);
+                if (total > 20000) {
+                    if (out.exists()) out.delete();
+                    if (tmp.renameTo(out)) {
+                        PlayLog.i(tag + "下载完成 " + out.getName() + " " + (total / 1024) + " KB 耗时="
+                                + ms + "ms 均速=" + (total / ms) + " KB/s");
+                        return true;
+                    }
+                }
+                PlayLog.w(TAG, tag + "下载不完整，只有 " + total + " B（第 " + attempt + " 次）");
+            } catch (Throwable e) {
+                PlayLog.w(TAG, tag + "下载失败（第 " + attempt + " 次）", e);
+            }
+            try {
+                tmp.delete();
+            } catch (Throwable ignored) {
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 后台把下一首（MP4/M4A 这类流式放不了的）整段下好。
+     *
+     * <p>动机：这类文件只能「先下载后播」，首次播放要等整首下完（手机上 3MB 约 38 秒）。
+     * 与其等切歌时让用户干等，不如现在就下 —— 切歌时 {@link #downloadThenPlay} 命中缓存瞬开。
+     * 失败不重试（记在 {@link #prefetchingTrackId} 里），免得每 500ms 的 ticker 反复发线程；
+     * 真要放的时候前台下载还会再兜一次。
+     */
+    private void prefetchMp4(final Item song) {
+        if (song == null || song.id == null) return;
+        if (song.id.equals(prefetchingTrackId)) return;        // 已经下过/正在下
+        final java.io.File out = cacheFileFor(song);
+        if (out == null) return;
+        if (out.exists() && out.length() > 20000) return;      // 已缓存
+        final String url = library.streamUrl(song.id);
+        if (url == null || url.length() == 0) return;
+        prefetchingTrackId = song.id;
+        PlayLog.i("预下载发起 song=" + song.id + " suffix=" + FormatSupport.suffixOf(song));
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                downloadToFile(url, out, "预", song);
+            }
+        }).start();
+    }
+
+    /**
+     * 「先下载后播」：用于 BASS 报 UNSTREAMABLE 的文件（如 moov 在末尾的 M4A）。
+     * 下载到应用缓存目录，再用本地文件建流；后台预下载过或播过一次就直接命中缓存，秒开。
+     */
+    private void downloadThenPlay(final Item song, final String url) {
+        try {
+            final java.io.File out = cacheFileFor(song);
+            if (out == null) {
+                preparing = false;
+                buffering = false;
+                notifyError("无法准备下载：缓存目录不可用");
+                return;
+            }
+            if (out.exists() && out.length() > 20000) {      // 命中缓存（含后台预下载好的）
+                PlayLog.w(TAG, "命中下载缓存 " + out.getName() + " (" + out.length() + " B)");
                 startWithBassLocal(song, out.getAbsolutePath());
                 return;
             }
             buffering = true;
             notifyError("此格式需先下载，正在下载…");
             notifyProgress();
+            final int gen = bassGen;   // 下载期间用户可能已经切歌：对不上就丢弃，别抢播
             new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    boolean ok = false;
-                    long total = 0;
-                    java.io.File tmp = new java.io.File(out.getAbsolutePath() + ".part");
-                    try {
-                        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                        c.setConnectTimeout(8000);
-                        c.setReadTimeout(30000);
-                        c.setInstanceFollowRedirects(true);
-                        java.io.InputStream in = c.getInputStream();
-                        java.io.FileOutputStream fos = new java.io.FileOutputStream(tmp);
-                        byte[] buf = new byte[16384];
-                        int n;
-                        while ((n = in.read(buf)) > 0) { fos.write(buf, 0, n); total += n; }
-                        fos.flush(); fos.close(); in.close();
-                        ok = total > 20000;
-                        if (ok) { if (out.exists()) out.delete(); tmp.renameTo(out); }
-                    } catch (Throwable e) {
-                        Log.w(TAG, "下载失败: " + e, e);
-                    }
-                    final boolean okf = ok;
-                    final long tot = total;
+                    final boolean okf = downloadToFile(url, out, "前台", song);
+                    final long tot = out.length();
                     main.post(new Runnable() {
                         @Override
                         public void run() {
                             if (okf) {
-                                Log.w(TAG, "下载完成 " + (tot / 1024) + " KB → 本地播放 song=" + song.id);
+                                if (gen != bassGen) {
+                                    PlayLog.w(TAG, "丢弃过期下载（期间已切歌）song=" + song.id);
+                                    return;
+                                }
+                                PlayLog.w(TAG, "下载完成 " + (tot / 1024) + " KB → 本地播放 song=" + song.id);
                                 startWithBassLocal(song, out.getAbsolutePath());
                             } else {
                                 buffering = false;
@@ -854,6 +1408,20 @@ public class Player {
     /** 用本地文件建 BASS 流（供「先下载后播」使用） */
     private void startWithBassLocal(Item song, String path) {
         try {
+            // ★★ BASS_Init 是懒执行的（原先只在「后台建流」那条路上调用），
+            // 而「缓存命中 → 本地播放」是直接建本地流、绕过了它 ——
+            // 于是首次播放（BASS 尚未初始化）必然报 **错误码 8 = BASS_ERROR_INIT**。
+            // 真机反馈「本地播放失败(错误码 8)」就是这个。建本地流前先确保初始化。
+            if (!bassInited) {
+                bassInited = BassNative.nativeInit(-1, 44100);
+                if (!bassInited) {
+                    preparing = false;
+                    buffering = false;
+                    PlayLog.w(TAG, "本地播放前 BASS 初始化失败");
+                    notifyError("BASS 初始化失败（错误码 " + BassNative.nativeErrorCode() + "）");
+                    return;
+                }
+            }
             releasePlayer();
             bassStallTicks = 0;
             bassCompletionHandled = false;
@@ -865,7 +1433,7 @@ public class Player {
                 int err = BassNative.nativeErrorCode();
                 preparing = false;
                 buffering = false;
-                Log.w(TAG, "本地建流失败 code=" + err + " path=" + path);
+                PlayLog.w(TAG, "本地建流失败 code=" + err + " path=" + path);
                 notifyError("本地播放失败（错误码 " + err + "）");
                 return;
             }
@@ -891,7 +1459,7 @@ public class Player {
         } catch (Throwable e) {
             preparing = false;
             buffering = false;
-            Log.w(TAG, "本地播放异常", e);
+            PlayLog.w(TAG, "本地播放异常", e);
             notifyError("本地播放异常：" + e.getMessage());
         }
     }
@@ -958,6 +1526,12 @@ public class Player {
             return;
         }
         playWhenReady = true;
+        // 建流还在后台线程跑（bassStream 尚未赋值）：这次 resume 只记下「想播」即可。
+        // 否则会再起一条流、作废原来那条 —— 反复 resume 就变成跳歌雪崩。
+        if (bassStream == 0 && mp == null && (preparing || buffering)) {
+            notifyProgress();
+            return;
+        }
         if (bassStream != 0) {
             if (!acquireFocus()) return;
             BassNative.nativePlay(bassStream, false);
@@ -1060,15 +1634,49 @@ public class Player {
             return false;
         }
         consecutivePlayFailures++;
-        Log.w(TAG, "跳过无法播放的曲目（" + why + "）连续失败=" + consecutivePlayFailures);
+        PlayLog.w(TAG, "跳过无法播放的曲目（" + why + "）连续失败=" + consecutivePlayFailures);
         notifyError(why + "，已自动跳过");
         nextAuto();
         return true;
     }
 
+    /**
+     * 单曲循环：把当前这条流 seek 回开头接着播，成功返回 true。
+     *
+     * <p>为什么要复用而不是重建：BASS 的流只在内存里缓冲（30 秒余量），播完不落盘，
+     * 重建 = **整首歌重新下载一遍**。循环一首 1620kbps 的 flac，一圈就是几十 MB 的纯重复流量。
+     */
+    private boolean replayCurrentBySeek() {
+        if (bassStream == 0) return false;
+        try {
+            BassNative.nativeSeekSec(bassStream, 0);
+            if (!acquireFocus()) return false;
+            if (!BassNative.nativePlay(bassStream, false)) return false;
+            positionMs = 0;
+            bassCompletionHandled = false;
+            bassEndTicks = 0;
+            bassLastPos = 0;
+            bassStallTicks = 0;
+            bassRetryCount = 0;
+            bassNetRetry = 0;
+            scrobbledCurrent = false;
+            playWhenReady = true;
+            playing = true;
+            PlayLog.w(TAG, "单曲循环：复用同一条流（省掉一次整首下载）");
+            notifyProgress();
+            main.removeCallbacks(ticker);
+            main.post(ticker);
+            return true;
+        } catch (Throwable t) {
+            PlayLog.w(TAG, "复用流转失败，改为重建", t);
+            return false;
+        }
+    }
+
     private void nextAuto() {
         if (queue.isEmpty()) return;
         if (mode == MODE_REPEAT_ONE) {
+            if (replayCurrentBySeek()) return;   // 能复用就复用，别重新下载
             startCurrent(0);
             return;
         }
@@ -1191,6 +1799,12 @@ public class Player {
                 s.put("albumId", it.albumId);
                 s.put("coverArt", it.coverArt);
                 s.put("duration", it.durationSec);
+                // ★ 格式信息必须一起存：服务端对 APE/DSD 只给 contentType 不给 suffix，
+                //   恢复队列时若丢掉它们，「本地」标志、缓存文件名、DSD 专用建流函数就全错了。
+                s.put("suffix", it.suffix);
+                s.put("contentType", it.contentType);
+                s.put("bitrate", it.bitrate);
+                s.put("starred", it.starred);
                 q.put(s);
             }
             o.put("queue", q);
@@ -1220,6 +1834,10 @@ public class Player {
                 it.albumId = s.optString("albumId", "");
                 it.coverArt = s.optString("coverArt", "");
                 it.durationSec = s.optInt("duration", 0);
+                it.suffix = s.optString("suffix", "");
+                it.contentType = s.optString("contentType", "");
+                it.bitrate = s.optInt("bitrate", 0);
+                it.starred = s.optBoolean("starred", false);
                 StringBuilder sb = new StringBuilder();
                 if (it.artist.length() > 0) sb.append(it.artist);
                 if (it.album.length() > 0) {
@@ -1262,6 +1880,9 @@ public class Player {
             o.put("albumId", song.albumId);
             o.put("coverArt", song.coverArt);
             o.put("duration", song.durationSec);
+            o.put("suffix", song.suffix);
+            o.put("contentType", song.contentType);
+            o.put("bitrate", song.bitrate);
             o.put("position", positionMs);
             o.put("at", System.currentTimeMillis());
             out.put(o);

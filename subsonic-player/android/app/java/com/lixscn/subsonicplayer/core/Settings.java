@@ -186,6 +186,23 @@ public class Settings {
         sp.edit().putInt("playMode", m).apply();
     }
 
+    /**
+     * 流量模式（预取 / 缓存策略）。
+     *
+     * <ul>
+     *   <li>{@code 0} = 省流（默认）：**蜂窝网完全不预取、不缓存**，只在 WiFi 下做</li>
+     *   <li>{@code 1} = 标准：不管什么网络都预取 / 缓存（最费流量，切歌最顺）</li>
+     *   <li>{@code 2} = 关闭：从不预取 / 不缓存，纯流式（最省，切歌要等一下）</li>
+     * </ul>
+     */
+    public int dataMode() {
+        return sp.getInt("dataMode", 0);
+    }
+
+    public void setDataMode(int m) {
+        sp.edit().putInt("dataMode", m).apply();
+    }
+
     /** 网络质量：0 原始 1 高(320) 2 中(192) 3 低(96) */
     public int networkQuality() {
         return sp.getInt("networkQuality", 0);

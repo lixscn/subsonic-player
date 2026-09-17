@@ -449,6 +449,58 @@ public class SettingsPage extends Page {
                 });
             }
         });
+
+        // 流量模式：控制「预取下一首 / 边播边存」在什么网络下做 —— 这是流量的大头
+        choiceRow("流量模式", dataModeName(lib.settings().dataMode()), new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                final String[] modes = {"省流（仅 WiFi 预取/缓存）", "标准（总是预取/缓存）", "关闭（不预取/不缓存）"};
+                Ui.choose(act, "流量模式", modes, lib.settings().dataMode(), new Ui.OnInput() {
+                    @Override
+                    public void onInput(String text) {
+                        try {
+                            lib.settings().setDataMode(Integer.parseInt(text));
+                        } catch (Exception ignored) {
+                        }
+                        act.refreshCurrent();
+                    }
+                });
+            }
+        });
+
+        // 缓存用量 + 一键清空（上限 4GB，用户得看得见它吃了多少）
+        choiceRow("播放缓存", playCacheText(), new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new android.app.AlertDialog.Builder(act)
+                        .setTitle("播放缓存")
+                        .setMessage(playCacheText()
+                                + "\n\n听过的曲子会存在这里，重播时零流量。\n清空后下次播放要重新下载。")
+                        .setPositiveButton("清空缓存", new android.content.DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(android.content.DialogInterface d, int w) {
+                                long freed = com.lixscn.subsonicplayer.core.MediaCache.clear(act);
+                                android.widget.Toast.makeText(act,
+                                        "已清空 " + (freed / 1048576) + " MB",
+                                        android.widget.Toast.LENGTH_SHORT).show();
+                                act.refreshCurrent();
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+    }
+
+    private static String dataModeName(int m) {
+        switch (m) {
+            case 1:
+                return "标准（总是预取/缓存）";
+            case 2:
+                return "关闭（不预取/不缓存）";
+            default:
+                return "省流（仅 WiFi）";
+        }
     }
 
     private static String modeName(int m) {
@@ -519,9 +571,21 @@ public class SettingsPage extends Page {
         });
     }
 
+    /** 封面磁盘缓存（CoverLoader）用量 */
     private String cacheText() {
         long bytes = CoverLoader.get(act).diskCacheSize();
         return "封面磁盘缓存：" + (bytes / 1024 / 1024) + " MB";
+    }
+
+    /**
+     * **播放缓存**（{@code sp-cache}：边播边存 / 整段下载下来的音频）用量。
+     *
+     * <p>注意别和封面缓存混了：这里原来错用了 {@link #cacheText()}（封面），
+     * 于是「播放缓存」一行显示的是封面的体积，用户根本看不到缓存吃了多少。
+     */
+    private String playCacheText() {
+        return com.lixscn.subsonicplayer.core.MediaCache.sizeText(act)
+                + " · " + com.lixscn.subsonicplayer.core.MediaCache.count(act) + " 首";
     }
 
     // ---------------- 关于 ----------------

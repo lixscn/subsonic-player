@@ -396,6 +396,11 @@ public final class Pages {
         it.albumId = o.optString("albumId", "");
         it.coverArt = o.optString("coverArt", "");
         it.durationSec = o.optInt("duration", 0);
+        // 历史/书签里也存了格式信息（服务端对 APE/DSD 只给 contentType 不给 suffix）
+        it.suffix = o.optString("suffix", "");
+        it.contentType = o.optString("contentType", "");
+        it.bitrate = o.optInt("bitrate", 0);
+        it.starred = o.optBoolean("starred", false);
         it.positionMs = positionMs;
         StringBuilder sb = new StringBuilder();
         if (it.artist.length() > 0) sb.append(it.artist);

@@ -184,6 +184,9 @@ public class CoverLoader {
             target.setTag(TAG_KEY, null);
             if (placeholderRes != 0) {
                 target.setImageResource(placeholderRes);
+            } else {
+                // 没有封面：清掉图，交给 CircleCover 画占位图标（不要留空白/上一张的残影）
+                target.setImageDrawable(null);
             }
             return;
         }
@@ -403,6 +406,10 @@ public class CoverLoader {
                     target.setImageBitmap(bmp);
                 } else if (placeholderRes != 0) {
                     target.setImageResource(placeholderRes);
+                } else {
+                    // 这张图取不到（404 / 解码失败）：清掉当前图 → CircleCover 会画占位，
+                    // 而不是把上一行的封面残留在这一行上
+                    target.setImageDrawable(null);
                 }
             }
         });

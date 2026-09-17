@@ -1,4 +1,4 @@
-# 开发用：把桌面版的服务器配置（DPAPI 密文）解密后写成 server.json 推到设备上，
+﻿# 开发用：把桌面版的服务器配置（DPAPI 密文）解密后写成 server.json 推到设备上，
 # 应用启动时会自动导入并删除该文件。全程不打印密码。
 [CmdletBinding()]
 param(

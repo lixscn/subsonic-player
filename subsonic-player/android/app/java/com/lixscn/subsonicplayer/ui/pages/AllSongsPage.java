@@ -70,6 +70,13 @@ public class AllSongsPage extends Page {
             }
         });
         lv.setAdapter(adapter);
+        // 自动切歌时刷新「正在播放」高亮
+        watchPlaying(new Runnable() {
+            @Override
+            public void run() {
+                if (adapter != null) adapter.notifyDataSetChanged();
+            }
+        });
 
         footer = Ui.row(act);
         footer.setGravity(Gravity.CENTER);
@@ -117,6 +124,7 @@ public class AllSongsPage extends Page {
 
     @Override
     public void onDestroy() {
+        unwatchPlaying();
         if (task != null) task.cancel();
     }
 }
