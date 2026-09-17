@@ -474,15 +474,6 @@ public class SubsonicClient {
         return out;
     }
 
-    /** 艺术家信息（简介 + 相似艺术家），失败返回 null */
-    public JSONObject getArtistInfo(String artistId) {
-        try {
-            JSONObject r = call("getArtistInfo2", "&id=" + Http.enc(artistId));
-            return obj(r, "artistInfo2");
-        } catch (Exception e) {
-            return null;
-        }
-    }
 
     public SearchResult search(String query, int count) throws Exception {
         String q = "&query=" + Http.enc(query) + "&artistCount=" + count
@@ -828,10 +819,6 @@ public class SubsonicClient {
         return binaryUrl("download", "&id=" + Http.enc(songId));
     }
 
-    public String shareUrl(String id) {
-        learnPrefix();
-        return binaryUrl("createShare", "&id=" + Http.enc(id));
-    }
 
     // ---------------- 小工具 ----------------
 

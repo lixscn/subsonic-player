@@ -101,13 +101,6 @@ public final class FormatSupport {
                 || "alac".equals(suffix) || "wma".equals(suffix);
     }
 
-    /** 系统解码器支持（但不代表高码率也稳） */
-    public static boolean isCommonContainer(String suffix) {
-        return "mp3".equals(suffix) || "m4a".equals(suffix) || "mp4a".equals(suffix)
-                || "aac".equals(suffix) || "ogg".equals(suffix) || "oga".equals(suffix)
-                || "opus".equals(suffix) || "flac".equals(suffix)
-                || "wav".equals(suffix) || "m4b".equals(suffix) || "3gp".equals(suffix);
-    }
 
     /**
      * 是否属于 MP4 家族（MP4/M4A 容器）。

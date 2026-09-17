@@ -134,48 +134,6 @@ public class Library {
         });
     }
 
-    /** 带取消的执行：cancel 后即使完成也不再回调 */
-    public <T> Task runCancelable(final Work<T> work, final Done<T> done) {
-        final AtomicBoolean cancelled = new AtomicBoolean(false);
-        pool.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    final T v = work.run();
-                    if (cancelled.get()) return;
-                    if (done != null) {
-                        main.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (!cancelled.get()) done.ok(v);
-                            }
-                        });
-                    }
-                } catch (final Exception e) {
-                    if (cancelled.get()) return;
-                    if (done != null) {
-                        main.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (!cancelled.get()) done.fail(friendly(e));
-                            }
-                        });
-                    }
-                }
-            }
-        });
-        return new Task() {
-            @Override
-            public void cancel() {
-                cancelled.set(true);
-            }
-
-            @Override
-            public boolean isCancelled() {
-                return cancelled.get();
-            }
-        };
-    }
 
     public void onMain(Runnable r) {
         main.post(r);
@@ -225,14 +183,7 @@ public class Library {
         }
     }
 
-    /** 把已有列表数据塞进缓存（详情页返回列表页时复用） */
-    public void putCache(String key, Object value) {
-        toCache(key, value);
-    }
 
-    public Object getCache(String key, long ttlMs) {
-        return fromCache(key, ttlMs);
-    }
 
     // ---------------- 连接 ----------------
 
@@ -752,14 +703,6 @@ public class Library {
         }, done);
     }
 
-    public void recentAlbums(final int n, Done<List<Item>> done) {
-        run(new Work<List<Item>>() {
-            @Override
-            public List<Item> run() throws Exception {
-                return client.getAlbums("recent", n, 0);
-            }
-        }, done);
-    }
 
     public void frequentAlbums(final int n, Done<List<Item>> done) {
         run(new Work<List<Item>>() {

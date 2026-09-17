@@ -78,10 +78,6 @@ public final class Secret {
         }
     }
 
-    /** 是否正在使用 KeyStore（false 表示退回了软件密钥） */
-    public static boolean usingKeyStore() {
-        return sKeyStoreOk;
-    }
 
     private static SecretKey key(Context ctx) {
         if (sKeyStoreOk) {

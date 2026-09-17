@@ -49,9 +49,6 @@ public final class Ui {
         sColors = Theme.withAccent(Theme.get(s.themeId()), s.accentIndex());
     }
 
-    public static boolean isDark(Context ctx) {
-        return colors(ctx).dark;
-    }
 
     // ---------------- 尺寸 ----------------
 
@@ -213,18 +210,7 @@ public final class Ui {
                 ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
-    public static View divider(Context c) {
-        View v = new View(c);
-        v.setBackgroundColor(colors(c).border);
-        v.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(c, 0.6f))));
-        return v;
-    }
 
-    public static View gap(Context c, float dp) {
-        View v = new View(c);
-        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(c, dp)));
-        return v;
-    }
 
     /** 区块标题（「最近添加」「全部歌曲」这类） */
     public static View sectionHeader(Context c, String title, String action, View.OnClickListener onAction) {

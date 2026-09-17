@@ -117,10 +117,6 @@ public class Player {
         }
     }
 
-    /** 是否持有音频焦点（UI/服务可查询） */
-    public boolean hasAudioFocus() {
-        return hasFocus;
-    }
 
     private void handleFocusChange(int change) {
         if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
@@ -1561,12 +1557,6 @@ public class Player {
         notifyProgress();
     }
 
-    public void stop() {
-        playWhenReady = false;
-        stopInternal();
-        notifyProgress();
-        saveState();
-    }
 
     private void stopInternal() {
         playing = false;
@@ -1741,11 +1731,6 @@ public class Player {
         notifyProgress();
     }
 
-    public void seekRatio(float ratio) {
-        int d = durationMs > 0 ? durationMs : (current() != null ? current().durationSec * 1000 : 0);
-        if (d <= 0) return;
-        seekTo((int) (d * Math.max(0f, Math.min(1f, ratio))));
-    }
 
     public void setMode(int m) {
         mode = ((m % 4) + 4) % 4;
@@ -1895,9 +1880,6 @@ public class Player {
         }
     }
 
-    public int loadBookmark(String songId) {
-        return sp.getInt("bm_" + songId, 0);
-    }
 
     /** 打乱队列 */
     public void shuffleQueue() {

@@ -91,23 +91,6 @@ public final class Http {
         }
     }
 
-    /** 探测重定向目标（Location 头）；无重定向返回 null */
-    public static String redirectLocation(String url, int timeoutMs) {
-        HttpURLConnection conn = null;
-        try {
-            conn = open(url, timeoutMs, false);
-            int code = conn.getResponseCode();
-            if (code == HttpURLConnection.HTTP_MOVED_PERM || code == HttpURLConnection.HTTP_MOVED_TEMP
-                    || code == 307 || code == 308) {
-                return conn.getHeaderField("Location");
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
-    }
 
     private static byte[] readAll(InputStream in) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream(8192);

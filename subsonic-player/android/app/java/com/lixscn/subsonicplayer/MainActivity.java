@@ -728,8 +728,6 @@ public class MainActivity extends Activity implements Player.Listener {
         if (TAB_LIBRARY.equals(currentTab) && stack.size() == 1) refreshCurrent();
     }
 
-    public void historyChanged() {
-    }
 
     // ---------------- 播放历史（本地记录） ----------------
 

@@ -44,14 +44,8 @@ public final class BassNative {
     /** 初始化输出设备；device=-1 表示默认设备 */
     public static native boolean nativeInit(int device, int freq);
 
-    /** 释放 BASS（进程退出或彻底关闭播放时调用） */
-    public static native void nativeFree();
 
-    /** SSL/HTTPS 插件是否加载成功（流地址是 https 时必须为 true） */
-    public static native boolean nativeSslLoaded();
 
-    /** 网络超时（毫秒） */
-    public static native void nativeSetNetTimeout(int ms);
 
     // ---------------- 建流（返回句柄，0 = 失败） ----------------
 
@@ -91,8 +85,6 @@ public final class BassNative {
     /** BASS 错误码（失败后立即取） */
     public static native int nativeErrorCode();
 
-    /** 缓冲百分比，-1 表示不可用 */
-    public static native int nativeBufferPercent(long handle);
 
     /** 是否因网速不足处于 stalled（用于「缓冲中…」提示） */
     public static native boolean nativeIsStalled(long handle);

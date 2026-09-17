@@ -29,12 +29,6 @@ public final class Menus {
     private Menus() {
     }
 
-    private static String[] concat(String[] a, String... b) {
-        String[] out = new String[a.length + b.length];
-        System.arraycopy(a, 0, out, 0, a.length);
-        System.arraycopy(b, 0, out, a.length, b.length);
-        return out;
-    }
 
     private static void show(final MainActivity act, String title, final String[] items, final Handler h) {
         AlertDialog.Builder b = Ui.dialog(act);
@@ -337,42 +331,6 @@ public final class Menus {
         });
     }
 
-    /** 批量：添加到歌单（歌单详情页/多选场景） */
-    public static void addSongsToPlaylist(final MainActivity act, final List<String> songIds, final String label) {
-        final Library lib = Library.get(act);
-        lib.playlists(new Library.Done<List<Item>>() {
-            @Override
-            public void ok(List<Item> pls) {
-                if (pls.isEmpty()) {
-                    act.toast("还没有歌单，请先新建");
-                    return;
-                }
-                final String[] items = new String[pls.size()];
-                for (int i = 0; i < pls.size(); i++) items[i] = pls.get(i).title;
-                show(act, label == null ? "添加到歌单" : label, items, new Handler() {
-                    @Override
-                    public void onPick(int i) {
-                        lib.addToPlaylist(pls.get(i).id, songIds, new Library.Done<Boolean>() {
-                            @Override
-                            public void ok(Boolean v) {
-                                act.toast("已添加");
-                            }
-
-                            @Override
-                            public void fail(String m) {
-                                act.toast(m);
-                            }
-                        });
-                    }
-                });
-            }
-
-            @Override
-            public void fail(String message) {
-                act.toast(message);
-            }
-        });
-    }
 
     public static void copy(Context ctx, String text) {
         try {

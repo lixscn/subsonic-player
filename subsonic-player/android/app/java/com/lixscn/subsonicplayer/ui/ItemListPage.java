@@ -199,9 +199,6 @@ public class ItemListPage extends Page {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    /** GridView 只支持单参数的 addFooterView（ListView 才有带 data 的重载） */
-    private void addFooterViewUnused(View v) {
-    }
 
     private void renderChips() {
         chipBar.removeAllViews();

@@ -56,12 +56,6 @@ public final class PlayLog {
         }
     }
 
-    /** 日志文件绝对路径（给"导出日志"用；未初始化时返回 null） */
-    public static String filePath() {
-        synchronized (LOCK) {
-            return file == null ? null : file.getAbsolutePath();
-        }
-    }
 
     public static void i(String msg) {
         write("I " + msg);

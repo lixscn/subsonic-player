@@ -87,11 +87,6 @@ static void sp_load_plugins(void) {
     BASS_PluginLoad("libbass_aac.so", 0);
 }
 
-JNIEXPORT jboolean JNICALL JNI_FN(nativeSslLoaded)(JNIEnv *env, jclass clazz) {
-    (void) env; (void) clazz;
-    return sp_ssl_plugin ? JNI_TRUE : JNI_FALSE;
-}
-
 JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint device, jint freq) {
     (void) env; (void) clazz;
     /* -1 = 默认设备；BASS_DEVICE_LATENCY 让 BASS 自己算缓冲，移动端更稳 */
@@ -122,16 +117,6 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint de
     BASS_SetConfig(BASS_CONFIG_NET_PREBUF_WAIT, 0);
     BASS_SetConfig(BASS_CONFIG_NET_READTIMEOUT, 30000);   /* 30 秒收不到数据才判死 */
     return JNI_TRUE;
-}
-
-JNIEXPORT void JNICALL JNI_FN(nativeFree)(JNIEnv *env, jclass clazz) {
-    (void) env; (void) clazz;
-    BASS_Free();
-}
-
-JNIEXPORT void JNICALL JNI_FN(nativeSetNetTimeout)(JNIEnv *env, jclass clazz, jint ms) {
-    (void) env; (void) clazz;
-    BASS_SetConfig(BASS_CONFIG_NET_TIMEOUT, (DWORD) ms);
 }
 
 /* 从 URL 建流（http/https 均可，鉴权参数直接带在 query 里） */
@@ -264,16 +249,6 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetVolume)(JNIEnv *env, jclass clazz, jlong 
 JNIEXPORT jint JNICALL JNI_FN(nativeErrorCode)(JNIEnv *env, jclass clazz) {
     (void) env; (void) clazz;
     return (jint) BASS_ErrorGetCode();
-}
-
-/* 网络流缓冲百分比（0-100，-1 表示不可用），用于显示「缓冲中…」 */
-JNIEXPORT jint JNICALL JNI_FN(nativeBufferPercent)(JNIEnv *env, jclass clazz, jlong handle) {
-    (void) env; (void) clazz;
-    if (handle == 0) return -1;
-    /* BASS 里这个函数是 2 参数、直接返回 QWORD（不是出参形式） */
-    QWORD pos = BASS_StreamGetFilePosition((HSTREAM) handle, BASS_FILEPOS_BUFFER);
-    if (pos == (QWORD) -1) return -1;
-    return (jint) pos;
 }
 
 /* 当前是否整体可播（BASS_ACTIVE_STALLED 时说明网速跟不上） */

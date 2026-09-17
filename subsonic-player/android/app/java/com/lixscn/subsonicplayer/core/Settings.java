@@ -228,14 +228,7 @@ public class Settings {
         sp.edit().putInt("volume", v).apply();
     }
 
-    /** 睡眠定时器剩余分钟（0 = 关闭） */
-    public int sleepTimerMinutes() {
-        return sp.getInt("sleepTimer", 0);
-    }
 
-    public void setSleepTimerMinutes(int m) {
-        sp.edit().putInt("sleepTimer", m).apply();
-    }
 
     public String librarySort() {
         return sp.getString("librarySort", "alphabeticalByArtist");
@@ -245,11 +238,5 @@ public class Settings {
         sp.edit().putString("librarySort", s).apply();
     }
 
-    public boolean firstRunDone() {
-        return sp.getBoolean("firstRunDone", false);
-    }
 
-    public void setFirstRunDone(boolean b) {
-        sp.edit().putBoolean("firstRunDone", b).apply();
-    }
 }

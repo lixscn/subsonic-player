@@ -412,7 +412,4 @@ public final class Pages {
         return it;
     }
 
-    /** 收集 AdapterView 的类型（避免未使用 import 警告） */
-    static void unused(AdapterView<?> v) {
-    }
 }
