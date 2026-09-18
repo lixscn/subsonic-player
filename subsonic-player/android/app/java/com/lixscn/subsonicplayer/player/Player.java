@@ -1723,7 +1723,6 @@ public class Player {
         startCurrent(0);
     }
 
-    /** 自动续播（曲目播完/出错跳过） */
     /**
      * 「服务器上找不到文件 / 打不开」这类错误：提示 + 自动跳下一首。
      * 连续失败 5 次就停下报错 —— 否则整库失效时会疯狂跳歌、用户不知道发生了什么。
@@ -1772,6 +1771,30 @@ public class Player {
             PlayLog.w(TAG, "复用流转失败，改为重建", t);
             return false;
         }
+    }
+
+    /**
+     * 把队列索引往前/往后挪一首，但**不本地起播** —— 给 DLNA 推送用：
+     * 音箱那边播完一首时，App 只需推进队列并把新的一首推给音箱，本地不该出声。
+     *
+     * @return 新的当前曲目；队列为空返回 null
+     */
+    public Item advanceForCast(boolean forward) {
+        if (queue.isEmpty()) return null;
+        if (mode == MODE_SHUFFLE) {
+            shuffleHistory.add(index);
+            index = randomIndex();
+        } else {
+            index += forward ? 1 : -1;
+            if (index >= queue.size()) {
+                if (mode == MODE_REPEAT_ALL || mode == MODE_SEQUENTIAL) index = 0;
+                else index = queue.size() - 1;
+            }
+            if (index < 0) index = queue.size() - 1;
+        }
+        notifyQueue();
+        notifyTrack();
+        return current();
     }
 
     private void nextAuto() {

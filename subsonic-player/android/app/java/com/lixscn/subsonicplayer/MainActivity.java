@@ -87,6 +87,7 @@ public class MainActivity extends Activity implements Player.Listener {
         lib = Library.get(this);
         player = Player.get(this);
         player.addListener(this);
+        com.lixscn.subsonicplayer.core.dlna.DlnaController.get(this).addListener(dlnaListener);
 
         buildShell();
         // 诊断：确认 BASS 原生库随包可用（纯日志，不影响逻辑）
@@ -283,7 +284,8 @@ public class MainActivity extends Activity implements Player.Listener {
         prevBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                player.previous();
+                if (castCtl() != null && castCtl().isCasting()) castCtl().skip(false);
+                else player.previous();
             }
         });
 
@@ -292,6 +294,11 @@ public class MainActivity extends Activity implements Player.Listener {
         miniToggle.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                if (castCtl() != null && castCtl().isCasting()) {
+                    if (castCtl().remotePlaying()) castCtl().pause();
+                    else castCtl().play();
+                    return;
+                }
                 ensureService();
                 player.toggle();
             }
@@ -302,7 +309,8 @@ public class MainActivity extends Activity implements Player.Listener {
         nextBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                player.next();
+                if (castCtl() != null && castCtl().isCasting()) castCtl().skip(true);
+                else player.next();
             }
         });
 
@@ -817,6 +825,31 @@ public class MainActivity extends Activity implements Player.Listener {
 
     // ---------------- 迷你播放条 ----------------
 
+    private com.lixscn.subsonicplayer.core.dlna.DlnaController castCtl() {
+        return com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+    }
+
+    /**
+     * DLNA 推送状态变化：推送中本地心跳是停的（本地播放被暂停了），
+     * 迷你条必须由**音箱**的进度驱动，否则会冻在本地那首的最后一帧。
+     */
+    private final com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener dlnaListener =
+            new com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener() {
+                @Override
+                public void onCastChanged() {
+                    updateMiniPlayer();
+                    com.lixscn.subsonicplayer.core.dlna.DlnaController d = castCtl();
+                    if (d != null && d.isCasting()) {
+                        updateMiniProgress((int) d.positionMs(), (int) d.durationMs());
+                    }
+                }
+
+                @Override
+                public void onCastError(String message) {
+                    toast(message);
+                }
+            };
+
     /** 迷你条底部进度线：跟随播放位置（新歌从 0 开始，天然复位） */
     private void updateMiniProgress(int positionMs, int durationMs) {
         if (miniProgress == null) return;
@@ -832,7 +865,10 @@ public class MainActivity extends Activity implements Player.Listener {
         miniProgress.setProgress(Math.max(0, Math.min(positionMs, total)));
         // 浅色二级段 = 「边播边存」已经缓存到哪（与播放页进度条同一语义）。
         // cachePercent 返回 -1 表示这首没在缓存 → 必须归零，否则上一首的缓存段会留在新歌上。
-        int cp = cur == null ? -1 : player.cachePercent(cur.id);
+        // 推送中也归零：这时本地不播也不缓存，进度是音箱那边的。
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc = castCtl();
+        boolean casting = dc != null && dc.isCasting();
+        int cp = casting ? -1 : (cur == null ? -1 : player.cachePercent(cur.id));
         miniProgress.setSecondaryProgress(cp > 0 ? (int) (total * (cp / 100.0)) : 0);
     }
 
@@ -848,6 +884,24 @@ public class MainActivity extends Activity implements Player.Listener {
         boolean show = top == null || top.showMiniPlayer();
         miniBar.setVisibility(show ? View.VISIBLE : View.GONE);
         miniTitle.setText(cur.title);
+
+        // DLNA 推送中：迷你条也要说清楚「现在声音在音箱那边」
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc = castCtl();
+        boolean casting = dc != null && dc.isCasting();
+        if (casting) {
+            String nm = dc.device() == null ? "DLNA 设备" : dc.device().displayName();
+            miniArtist.setText("推送到 " + nm);
+            miniToggle.setImageResource(dc.remotePlaying() ? R.drawable.ic_pause : R.drawable.ic_play);
+            miniToggle.setColorFilter(c.accent);
+            miniToggle.setTag(dc.remotePlaying() ? R.drawable.ic_pause : R.drawable.ic_play);
+            String url = cur.coverArt == null || cur.coverArt.length() == 0 ? "" : lib.coverUrl(cur.coverArt, 256);
+            miniCover.setBackground(Ui.rect(c.surfaceAlt, Ui.dp(this, 8)));
+            if (url.length() > 0) CoverLoader.get(this).load(url, miniCover, 0);
+            else miniCover.setImageDrawable(null);
+            updateBufferingOverlay();
+            return;
+        }
+
         boolean buffering = player.isBuffering();
         String sub = cur.subtitle == null ? "" : cur.subtitle;
         miniArtist.setText(buffering ? (sub.length() > 0 ? sub + " · 缓冲中…" : "缓冲中…") : sub);

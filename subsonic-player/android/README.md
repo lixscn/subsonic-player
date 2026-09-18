@@ -120,6 +120,7 @@ android/
 | 搜索 | 歌曲/专辑/艺术家三段结果、350ms 防抖、最近搜索词 |
 | 播放 | 顺序/随机/列表循环/单曲循环、队列编辑（移除/下一首播放/随机/清空）、进度拖动、音量、断点续播、播放位置持久化（本机） |
 | 网络 | **切网自动换地址**：WiFi ⇄ 蜂窝切换后重新确认当前地址，**只在真的不可达时才换**（内网 ⇄ 外网、选延迟低的），换完**从断点续播**；流量模式下切到蜂窝会中止后台缓存 |
+| **DLNA 推送** | 发现局域网里的 MediaRenderer（SSDP M-SEARCH + 解析设备描述）→ 选设备 → 把**当前曲目推给音箱/功放**，由它自己去 NAS 拉流（不占手机流量）；播放页/迷你条上的播放·暂停·上一首·下一首·进度都作用于音箱，**唱完自动推下一首**；纯 Android Framework，零第三方依赖 |
 | 缓存 | 「边播边存」整首存本地（重播零流量）、缓存优先播放、4GB LRU、设置页可看用量/一键清空；已缓存的曲目在**播放页 + 播放队列**显示**「本地」标志**（浏览列表不加，保持干净） |
 | 后台 | 前台服务 + MediaSession：通知栏 3 键、锁屏、耳机按键、音频焦点（来电/其他 App 抢占时自动暂停、拔出耳机暂停） |
 | 歌词 | 服务端同步歌词（`getLyricsBySongId`）→ 服务端 LRC（`getLyrics`）→ LRCLIB → 网易云兜底；卡拉OK 滚动高亮 |
@@ -168,6 +169,13 @@ adb logcat -d -t 300 | Select-String "FATAL|AndroidRuntime|PlaybackState"
 
 # 探测服务端（会解密桌面版 settings.json 里的 DPAPI 密文，不打印密码）
 powershell -File tools\run-probe.ps1        # 结果落在 build\probe\SHAPES.txt
+
+# DLNA 推送联调：在同局域网的 Linux 机器（NAS/树莓派）上跑一个**模拟渲染器**
+# （它应答 SSDP、提供 AVTransport/RenderingControl 的 SOAP 端点，并把收到的每个动作写日志）
+scp tools\dlna-mock.py NAS:/tmp/ && ssh NAS "python3 /tmp/dlna-mock.py --http-port 8099 --max-dur 20"
+#   --max-dur N: 把每首都当成最多 N 秒 → 方便快速验证「唱完自动推下一首」
+#   日志: /tmp/dlna-mock.log（能看到 SetAVTransportURI / Play / Pause / Seek 的真实参数）
+#   验完记得停: ssh NAS "pkill -f '[d]lna-mock'"（否则它会出现在 App 的设备列表里）
 
 # 给模拟器注入服务器配置并启动
 powershell -File tools\dev-push-config.ps1

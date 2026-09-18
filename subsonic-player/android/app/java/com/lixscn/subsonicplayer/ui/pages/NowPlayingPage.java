@@ -66,6 +66,10 @@ public class NowPlayingPage extends Page {
     private TextView albumView;
     /** 「本地」标志：这首已有完整缓存，重播零流量 */
     private TextView localBadge;
+    /** 「推送到 XXX」提示（DLNA 推送进行中才显示） */
+    private TextView castStatus;
+    /** 顶栏的推送图标（推送中就染成强调色） */
+    private ImageView castIcon;
 
     private SeekBar seekBar;
     private TextView posText;
@@ -110,6 +114,15 @@ public class NowPlayingPage extends Page {
         @Override
         public void onProgress(boolean playing, int positionMs, int durationMs) {
             if (cover == null) return;
+            if (casting()) {
+                // 推送中：进度/按钮以**音箱**为准（本地播放已暂停）
+                com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
+                updatePlayIcon(d.remotePlaying());
+                updateProgress((int) d.positionMs(), (int) d.durationMs());
+                updateLyricHighlight((int) d.positionMs());
+                if (seekBar != null) seekBar.setSecondaryProgress(0);
+                return;
+            }
             updatePlayIcon(playing);
             updateProgress(positionMs, durationMs);
             updateLyricHighlight(positionMs);
@@ -139,6 +152,166 @@ public class NowPlayingPage extends Page {
         }
     };
 
+    /** DLNA 推送状态（远端进度/状态/设备变化） */
+    private final com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener dlnaListener =
+            new com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener() {
+                @Override
+                public void onCastChanged() {
+                    if (cover == null) return;
+                    // 推送中本地心跳是停的（本地播放被暂停了）→ 这里必须用**音箱**的进度驱动界面，
+                    // 否则进度条会冻在本地那首的最后一帧上
+                    com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
+                    if (d != null && d.isCasting()) {
+                        updatePlayIcon(d.remotePlaying());
+                        updateProgress((int) d.positionMs(), (int) d.durationMs());
+                        updateLyricHighlight((int) d.positionMs());
+                        if (seekBar != null) seekBar.setSecondaryProgress(0);
+                    }
+                    syncCastUi();
+                }
+
+                @Override
+                public void onCastError(String message) {
+                    if (act != null) act.toast(message);
+                }
+            };
+
+    private com.lixscn.subsonicplayer.core.dlna.DlnaController dlna() {
+        return com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+    }
+
+    /** 是否正在推送到 DLNA 设备（推送时播放/暂停/切歌/进度都归音箱管） */
+    private boolean casting() {
+        com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
+        return d != null && d.isCasting();
+    }
+
+    /** 刷新「推送到 XXX」提示与顶栏图标 */
+    private void syncCastUi() {
+        com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
+        boolean on = d != null && d.isCasting();
+        if (castStatus != null) {
+            if (on) {
+                String nm = d.device() == null ? "DLNA 设备" : d.device().displayName();
+                castStatus.setText("推送到 " + nm);
+                castStatus.setVisibility(View.VISIBLE);
+            } else {
+                castStatus.setVisibility(View.GONE);
+            }
+        }
+        if (castIcon != null && act != null) {
+            Theme.Colors c = Ui.colors(act);
+            castIcon.setColorFilter(on ? c.accent : c.textDim);
+        }
+    }
+
+    /**
+     * 「推送到 DLNA 设备」：先扫 4 秒 → 列出设备 → 选中后把**当前这首**推过去。
+     * 以后播放页的播放/暂停/上一首/下一首/进度都直接操作音箱（本地播放会先暂停）。
+     */
+    private void showCastDialog() {
+        final com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.get(act);
+        final android.app.AlertDialog searching = Ui.dialog(act)
+                .setTitle("DLNA 推送")
+                .setMessage("正在搜索局域网里的 DLNA 设备…\n（约 4 秒；音箱/功放要和手机在同一个网络）")
+                .setNegativeButton("取消", null)
+                .create();
+        searching.show();
+
+        dc.scan(4000, new com.lixscn.subsonicplayer.core.dlna.DlnaDiscovery.Callback() {
+            @Override
+            public void onDone(java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> devices, String error) {
+                if (act == null) return;
+                try {
+                    searching.dismiss();
+                } catch (Throwable ignored) {
+                }
+
+                final java.util.List<String> labels = new java.util.ArrayList<String>();
+                final java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> list =
+                        new java.util.ArrayList<com.lixscn.subsonicplayer.core.dlna.DlnaDevice>();
+                final boolean castingNow = dc.isCasting();
+                if (castingNow) labels.add("停止推送（" + dc.device().displayName() + "）");
+                for (com.lixscn.subsonicplayer.core.dlna.DlnaDevice d : devices) {
+                    list.add(d);
+                    String extra = (d.model != null && d.model.length() > 0) ? "  ·  " + d.model : "";
+                    labels.add(d.displayName() + extra);
+                }
+
+                if (list.isEmpty()) {
+                    StringBuilder msg = new StringBuilder();
+                    msg.append("没有找到 DLNA 设备。\n\n")
+                            .append("· 音箱/功放要和手机在同一个 Wi-Fi 下；\n")
+                            .append("· 有些设备待机时不响应发现，先唤醒它再试；\n")
+                            .append("· 需要设备支持 UPnP AV 的 MediaRenderer（Sonos / WiiM / 多数网络功放都支持）。");
+                    if (error != null && error.length() > 0) msg.append("\n\n扫描异常：").append(error);
+                    Ui.dialog(act).setTitle("没找到 DLNA 设备").setMessage(msg.toString())
+                            .setPositiveButton("重新搜索", new android.content.DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(android.content.DialogInterface d, int w) {
+                                    showCastDialog();
+                                }
+                            })
+                            .setNegativeButton("取消", null).show();
+                    return;
+                }
+
+                labels.add("重新搜索");
+                final int offset = castingNow ? 1 : 0;
+                Ui.dialog(act).setTitle("推送到哪台设备")
+                        .setItems(labels.toArray(new String[0]),
+                                new android.content.DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(android.content.DialogInterface d, int which) {
+                                        if (castingNow && which == 0) {
+                                            dc.stopCasting(true);
+                                            syncCastUi();
+                                            act.toast("已停止推送");
+                                            return;
+                                        }
+                                        if (which == labels.size() - 1) {
+                                            showCastDialog();
+                                            return;
+                                        }
+                                        final com.lixscn.subsonicplayer.core.dlna.DlnaDevice dev =
+                                                list.get(which - offset);
+                                        act.toast("正在连接 " + dev.displayName() + "…");
+                                        dc.connect(dev, new com.lixscn.subsonicplayer.core.Library.Done<Boolean>() {
+                                            @Override
+                                            public void ok(Boolean value) {
+                                                final Item cur = player.current();
+                                                if (cur == null) {
+                                                    act.toast("还没有播放内容，先点一首歌");
+                                                    return;
+                                                }
+                                                dc.cast(cur, new com.lixscn.subsonicplayer.core.Library.Done<Boolean>() {
+                                                    @Override
+                                                    public void ok(Boolean v) {
+                                                        syncCastUi();
+                                                        act.toast("已推送到 " + dev.displayName());
+                                                    }
+
+                                                    @Override
+                                                    public void fail(String message) {
+                                                        act.toast("推送失败：" + message);
+                                                    }
+                                                });
+                                            }
+
+                                            @Override
+                                            public void fail(String message) {
+                                                act.toast("连接失败：" + message);
+                                            }
+                                        });
+                                    }
+                                })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+    }
+
     // ---------------- Page ----------------
 
     @Override
@@ -166,6 +339,10 @@ public class NowPlayingPage extends Page {
         // 防御：万一 build 被重复调用，先摘掉旧注册（正常路径由 onDestroy 摘）
         player.removeListener(listener);
         player.addListener(listener);
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.get(act);
+        dc.removeListener(dlnaListener);
+        dc.addListener(dlnaListener);
 
         LinearLayout root = Ui.column(act);
         // 毛玻璃底图：外层 FrameLayout 放专辑/歌手相片（低透明 + 深色蒙层），内容叠在上面。
@@ -215,6 +392,8 @@ public class NowPlayingPage extends Page {
     @Override
     public void onDestroy() {
         player.removeListener(listener);
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc = dlna();
+        if (dc != null) dc.removeListener(dlnaListener);
         lyricsProvider.cancelAll();
     }
 
@@ -243,6 +422,20 @@ public class NowPlayingPage extends Page {
         TextView label = Ui.text(act, "正在播放", 12.5f, c.textFaint);
         label.setGravity(Gravity.CENTER);
         head.addView(label, Ui.lpWeight(1));
+
+        // DLNA 推送：选设备 / 停止推送
+        FrameLayout castBtn = new FrameLayout(act);
+        castBtn.setLayoutParams(Ui.lp(Ui.dp(act, 44), Ui.dp(act, 44)));
+        castIcon = createIcon(R.drawable.ic_cast, 20, c.textDim);
+        castBtn.addView(castIcon);
+        castBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showCastDialog();
+            }
+        });
+        Ui.tappable(castBtn, act, c.textDim);
+        head.addView(castBtn);
 
         // 队列入口：本页下半区的队列区受屏幕高度限制只能当预览，这里给一个明确入口打开全屏队列
         FrameLayout queueBtn = new FrameLayout(act);
@@ -343,6 +536,14 @@ public class NowPlayingPage extends Page {
         blp.topMargin = Ui.dp(act, 2);
         box.addView(localBadge, blp);
 
+        // DLNA 推送提示（推送中才显示）
+        castStatus = Ui.text(act, "", 11.5f, c.accent);
+        castStatus.setVisibility(View.GONE);
+        LinearLayout.LayoutParams cslp = Ui.lp(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        cslp.topMargin = Ui.dp(act, 4);
+        box.addView(castStatus, cslp);
+
         return box;
     }
 
@@ -379,7 +580,8 @@ public class NowPlayingPage extends Page {
             @Override
             public void onStopTrackingTouch(SeekBar sb) {
                 dragging = false;
-                player.seekTo(sb.getProgress());
+                if (casting()) dlna().seek(sb.getProgress());   // 推送中：定位的是音箱
+                else player.seekTo(sb.getProgress());
             }
         });
         box.addView(seekBar, Ui.lpMatchWrap());
@@ -410,7 +612,8 @@ public class NowPlayingPage extends Page {
         prev.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                player.previous();
+                if (casting()) dlna().skip(false);   // 推送中：切的是音箱那一首
+                else player.previous();
             }
         });
         Ui.tappable(prev, act, c.text);
@@ -426,7 +629,12 @@ public class NowPlayingPage extends Page {
         play.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                player.toggle();
+                if (casting()) {
+                    if (dlna().remotePlaying()) dlna().pause();
+                    else dlna().play();
+                } else {
+                    player.toggle();
+                }
             }
         });
         Ui.tappable(play, act, c.accentText);
@@ -437,7 +645,8 @@ public class NowPlayingPage extends Page {
         next.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                player.next();
+                if (casting()) dlna().skip(true);     // 推送中：切的是音箱那一首
+                else player.next();
             }
         });
         Ui.tappable(next, act, c.text);
