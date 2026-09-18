@@ -153,18 +153,22 @@ public class Player {
     private void handleFocusChange(int change) {
         if (change == AudioManager.AUDIOFOCUS_LOSS) {
             // 永久失去（别的 App 开始放）：不自动恢复
+            PlayLog.w(TAG, "音频焦点：永久失去 → 暂停");
             hasFocus = false;
             focusAutoPaused = false;
             pause();
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
             // 临时失去（导航播报/来电/车机切源）：先暂停，**记住是自动暂停的**
             boolean wasPlaying = playing;
+            PlayLog.w(TAG, "音频焦点：临时失去（导航播报/来电/车机切源）wasPlaying=" + wasPlaying);
             hasFocus = false;
             pause();
             focusAutoPaused = wasPlaying;
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+            PlayLog.w(TAG, "音频焦点：被 duck（压低音量）");
             setDuckFactor(0.3f);
         } else if (change == AudioManager.AUDIOFOCUS_GAIN) {
+            PlayLog.w(TAG, "音频焦点：恢复（focusAutoPaused=" + focusAutoPaused + "）");
             hasFocus = true;
             setDuckFactor(1f);
             if (focusAutoPaused) {
@@ -218,6 +222,12 @@ public class Player {
     private int bassLastPos;
     /** 到末尾后连续没前进的拍数（约 2 秒 → 判曲目结束） */
     private int bassEndTicks;
+    /**
+     * 「位置冻住」的拍数：BASS 偶尔会**说在播（state=1）但位置不再前进**。
+     * 服务端报的时长比实际音频长时尤其致命 —— nearEnd 永远不成立、st 又不是 0/3，
+     * 于是曲尾分支和断流分支都不进，静默挂死（09-18 下午 6231/2561 疑似就是它）。
+     */
+    private int bassFrozenTicks;
     /** 预取代次：切歌/释放时自增；后台预取回来对不上就丢弃，避免留下野流 */
     private int preloadGen;
     /** 已经安排过「后台预下载」的曲目 id（MP4 家族用；失败也不重试，见 prefetchMp4） */
@@ -272,6 +282,12 @@ public class Player {
                 // 曲尾判定窗口给到 3 秒：BASS 的位置读数会跳、断流时还会停在最后一两秒不动，
                 // 窗口太窄（原来 1.5s）就会「差一点点没进曲尾」→ 既不判结束也不走断流分支。
                 boolean nearEnd = durationMs > 0 && positionMs >= durationMs - 3000;
+                // 「位置冻住」计数：位置没前进就累计（>0 才计，避免刚起播时位置还是 0 被误判）
+                if (positionMs > 0 && positionMs <= bassLastPos) {
+                    bassFrozenTicks++;
+                } else {
+                    bassFrozenTicks = 0;
+                }
                 // 曲目自然结束：BASS 没有 onCompletion 回调（MediaPlayer 才有），
                 // 所以必须在这里补上收尾逻辑 —— 否则播完就停在那，不会自动下一首。
                 //
@@ -300,7 +316,19 @@ public class Player {
                     bassEndTicks = 0;
                 }
                 bassLastPos = positionMs;
-                if (!nearEnd && (st == 0 || st == 3)) {
+                // ② 冻在末尾（含「服务端时长比实际长」的情况）：约 6 秒没前进就判结束、切下一首。
+                //    没有这条时，这类歌会「BASS 说在播、位置不动、也不切歌」静默停在那里。
+                if (!bassCompletionHandled && bassStream != 0 && bassFrozenTicks >= 12
+                        && durationMs > 0 && positionMs >= Math.max(5000, durationMs - 15000)) {
+                    bassCompletionHandled = true;
+                    PlayLog.w(TAG, "位置在曲尾冻住约 6 秒 → 判结束切下一首 pos=" + positionMs
+                            + "/" + durationMs + " st=" + st);
+                    main.removeCallbacks(ticker);
+                    onTrackFinished();
+                    return;
+                }
+                // ③ 中段冻住（st 还是 1）：按断流处理，走下面的重连
+                if ((!nearEnd && (st == 0 || st == 3)) || (!nearEnd && bassFrozenTicks >= 12)) {
                     bassStallTicks++;
                     if (bassStallTicks >= 4) {           // 约 2 秒没恢复
                         bassStallTicks = 0;
@@ -640,6 +668,7 @@ public class Player {
         bassRetryCount = 0;
         bassNetRetry = 0;
         bassLastPos = 0;
+        bassFrozenTicks = 0;
         bassEndTicks = 0;
         bassStallTicks = 0;
         notifyTrack();
@@ -1571,6 +1600,9 @@ public class Player {
 
     public void pause() {
         focusAutoPaused = false;   // 用户主动暂停：之后焦点回来也不该自己续播
+        Item pcur = current();
+        PlayLog.w(TAG, "暂停 song=" + (pcur == null ? "?" : pcur.id) + " pos=" + positionMs
+                + " (调用方：用户/通知栏/蓝牙断开)");
         playWhenReady = false;
         if (bassStream != 0) BassNative.nativePause(bassStream);
         if (mp != null && playing) {
@@ -1595,6 +1627,7 @@ public class Player {
             startCurrent(restoreSeekMs);
             return;
         }
+        PlayLog.w(TAG, "继续播放 song=" + cur.id + " pos=" + positionMs);
         playWhenReady = true;
         // 建流还在后台线程跑（bassStream 尚未赋值）：这次 resume 只记下「想播」即可。
         // 否则会再起一条流、作废原来那条 —— 反复 resume 就变成跳歌雪崩。
@@ -1775,6 +1808,8 @@ public class Player {
         consecutivePlayFailures = 0;   // 正常播完一首 → 失败计数清零
         Item cur = current();
         if (cur != null) library.scrobble(cur.id, true);
+        PlayLog.w(TAG, "曲目播完 song=" + (cur == null ? "?" : cur.id)
+                + " mode=" + mode + " index=" + index + "/" + queue.size());
         positionMs = durationMs;
         notifyProgress();
         nextAuto();

@@ -303,6 +303,9 @@ public class PlaybackService extends Service implements Player.Listener {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
+                    // 拔耳机 / 蓝牙断开都会走这里。必须留一行日志：
+                    // 否则事后看 playback.log 完全分不清「用户/蓝牙把它暂停了」还是「卡死没切歌」。
+                    com.lixscn.subsonicplayer.core.PlayLog.w(TAG, "音频输出断开（耳机/蓝牙 becoming-noisy）→ 暂停");
                     player.pause();
                 }
             }
