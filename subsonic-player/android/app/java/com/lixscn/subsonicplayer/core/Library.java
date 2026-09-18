@@ -402,11 +402,36 @@ public class Library {
             public Boolean run() {
                 PlayLog.init(appCtx);
                 final String current = client.activeUrl();
-                // ① 当前地址还通就不动
+                // ① 当前地址还通 —— 通常什么都不做（避免频繁重连断流 + 白费流量）。
+                //    **但内网可达而当前走的不是内网时必须切回内网**：
+                //    在家里访问外网地址等于绕公网一圈（实测延迟 200~1900ms），放歌会卡；
+                //    以前只看「当前是否可用」，于是一旦切到外网就再也回不来
+                //    （真机 2026-09-18 18:07–18:40 全程走外网放歌，用户反馈「音乐卡卡的」）。
                 long t0 = android.os.SystemClock.elapsedRealtime();
                 if (client.ping(3000)) {
-                    PlayLog.w(TAG, "网络变化 → 当前地址仍可用（延迟 "
-                            + (android.os.SystemClock.elapsedRealtime() - t0) + "ms），不切换");
+                    long curLatency = android.os.SystemClock.elapsedRealtime() - t0;
+                    String lanUrl = svc == null ? "" : norm(svc.lanUrl);
+                    if (lanUrl.length() > 0 && !lanUrl.equals(current)) {
+                        client.useUrl(lanUrl);
+                        long s = android.os.SystemClock.elapsedRealtime();
+                        boolean lanOk = client.ping(1200);
+                        long lanLatency = android.os.SystemClock.elapsedRealtime() - s;
+                        if (lanOk && lanLatency + 50 < curLatency) {
+                            // 内网明显更快 → 切回去（正在播放的话 Player 会断点续播）
+                            connectedUrl = lanUrl;
+                            client.learnPrefix();
+                            lastSwitchLatency = lanLatency;
+                            PlayLog.w(TAG, "网络变化 → 内网可达，从外网切回内网（"
+                                    + curLatency + "ms → " + lanLatency + "ms）");
+                            return Boolean.TRUE;
+                        }
+                        client.useUrl(current);      // 内网不通或不更快 → 维持原地址
+                        PlayLog.w(TAG, "网络变化 → 当前地址仍可用（延迟 " + curLatency + "ms），"
+                                + (lanOk ? ("内网也不更快（" + lanLatency + "ms）") : "内网不可达")
+                                + "，不切换");
+                        return Boolean.FALSE;
+                    }
+                    PlayLog.w(TAG, "网络变化 → 当前地址仍可用（延迟 " + curLatency + "ms），不切换");
                     return Boolean.FALSE;
                 }
                 // ② 当前地址不可达：内外网各探一次，选延迟低的
