@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -96,8 +96,8 @@
         },
         {
           "@type": "Question",
-          "name": "Why do some songs not play on Android?",
-          "acceptedAnswer": { "@type": "Answer", "text": "The Android app uses the system decoders and supports mp3, m4a (AAC), FLAC, WAV and OGG. If your server does not transcode, formats such as DSD (.dsf), APE and WavPack cannot be played." }
+          "name": "Which audio formats does the Android app support?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The Android app bundles its own decoders (BASS core + add-ons): mp3, m4a (AAC), FLAC, WAV and OGG, plus DSD (.dsf), APE, WavPack and Opus — no server-side transcoding needed. When the server omits the file suffix for APE/DSD, the client falls back to the MIME type to identify the format." }
         }
       ]
     }
@@ -185,7 +185,7 @@
         </article>
         <article class="card">
           <h3>Library management</h3>
-          <p>Create, rename and edit playlists, add songs to playlists, favorites (heart), 1–5 star ratings, share links and original-file downloads. Play history with scrobbling and cloud-synced play queues.</p>
+          <p>Create, rename and edit playlists, add songs to playlists, favorites (heart), 1–5 star ratings, share links and original-file downloads. Play history with scrobbling. The Android app also caches every track it plays for zero-data replays, and marks cached tracks as “Local” on the player page and in the play queue.</p>
         </article>
         <article class="card">
           <h3>Native Android app</h3>
@@ -257,8 +257,8 @@
             <li>Native UI: bottom navigation, mini player, full-screen player with lyrics and queue</li>
             <li>Separate LAN and WAN addresses — switch to your HTTPS domain automatically when away</li>
           </ul>
-          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>Download for Android (~160 KB)</a>
-          <p class="hint">The APK is self-signed; allow installation from unknown sources when prompted. Playback supports mp3 / m4a / FLAC / WAV / OGG (DSD and APE cannot be played unless your server transcodes).</p>
+          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>Download for Android (~5.1 MB)</a>
+          <p class="hint">The APK is self-signed; allow installation from unknown sources when prompted. Built-in decoders: mp3 / m4a (AAC) / FLAC / WAV / OGG / DSD (.dsf) / APE / WavPack / Opus — no server-side transcoding required.</p>
         </article>
       </div>
       <p class="dl-note">
@@ -296,8 +296,8 @@
         <dt>Why is the Windows download so large?</dt>
         <dd>The desktop app bundles Chromium (CEF) for its interface and ships the .NET runtime, so you do not need to install anything else — just unzip and run.</dd>
 
-        <dt>Why do some songs not play on Android?</dt>
-        <dd>The Android app relies on system decoders and supports mp3, m4a (AAC), FLAC, WAV and OGG. When your server does not transcode, DSD (.dsf), APE and WavPack files cannot be played.</dd>
+        <dt>Which audio formats does the Android app support?</dt>
+        <dd>Bundled decoders (BASS core + add-ons): mp3, m4a (AAC), FLAC, WAV, OGG, plus DSD (.dsf), APE, WavPack and Opus — playable even when the server does not transcode. Servers often omit the file suffix for APE/DSD files; the client falls back to the MIME type.</dd>
 
         <dt>Is my data uploaded anywhere?</dt>
         <dd>No. There is no account system: every request goes straight to your own server, and server passwords are encrypted on-device (Windows DPAPI, Android KeyStore).</dd>

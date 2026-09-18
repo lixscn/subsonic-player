@@ -101,7 +101,7 @@
         {
           "@type": "Question",
           "name": "Android 版为什么有些歌放不出来？",
-          "acceptedAnswer": { "@type": "Answer", "text": "Android 版使用系统解码器，支持 mp3 / m4a(AAC) / FLAC / WAV / OGG。若服务端不做转码，则 DSD(.dsf)、APE、WavPack 等格式无法播放。" }
+          "acceptedAnswer": { "@type": "Answer", "text": "Android 版内置解码器（BASS 核心 + add-on 插件），支持 mp3 / m4a(AAC) / FLAC / WAV / OGG，以及 DSD(.dsf) / APE / WavPack / Opus —— 服务端不做转码也能直接播放；APE/DSD 这类服务端不返回后缀的文件也能自动识别。" }
         }
       ]
     }
@@ -190,7 +190,7 @@
         </article>
         <article class="card">
           <h3>媒体管理</h3>
-          <p>歌单增删改、添加到歌单、收藏（红心）、1–5 星评分、分享链接、下载原文件；播放历史与 scrobble 上报，播放队列可云端同步。</p>
+          <p>歌单增删改、添加到歌单、收藏（红心）、1–5 星评分、分享链接、下载原文件；播放历史与 scrobble 上报。Android 版还会把听过的曲子整首缓存到本机（重播零流量），已缓存的曲目在播放页与播放队列标注「本地」。</p>
         </article>
         <article class="card">
           <h3>Android 原生客户端</h3>
@@ -225,7 +225,7 @@
         </figure>
         <figure>
           <img src="/assets/android-albums.jpg" width="420" height="864" loading="lazy" alt="Android 客户端专辑网格：三列封面墙与排序标签">
-          <figcaption>专辑封面墙</figcaption>
+          <figcaption>收藏与我的曲单</figcaption>
         </figure>
         <figure>
           <img src="/assets/android-player.jpg" width="420" height="864" loading="lazy" alt="Android 客户端正在播放页：大封面、进度条、播放控制与歌词标签">
@@ -264,8 +264,8 @@
             <li>原生界面：底部导航、迷你播放条、全屏播放页（歌词 / 队列）</li>
             <li>支持内外网双地址，出门自动走域名（HTTPS）</li>
           </ul>
-          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>下载 Android 版（约 160 KB）</a>
-          <p class="hint">APK 为自签名，安装时若提示「未知来源」请选择允许。仅支持 mp3 / m4a / FLAC / WAV / OGG（DSD、APE 等服务端不转码时无法播放）。</p>
+          <a class="btn btn-primary block" href="/downloads/SubsonicPlayer-android-0.1.0.apk" download>下载 Android 版（约 5.1 MB）</a>
+          <p class="hint">APK 为自签名，安装时若提示「未知来源」请选择允许。内置解码：mp3 / m4a(AAC) / FLAC / WAV / OGG / DSD(.dsf) / APE / WavPack / Opus，服务端不转码也能播。</p>
         </article>
       </div>
       <p class="dl-note">
@@ -305,8 +305,8 @@
         <dt>Windows 版为什么体积比较大？</dt>
         <dd>桌面版内置 Chromium（CEF）用于渲染界面，并自带 .NET 运行时，所以不需要你另外安装任何环境 —— 解压就能用。</dd>
 
-        <dt>Android 版为什么有些歌放不出来？</dt>
-        <dd>Android 版使用系统解码器，支持 mp3 / m4a(AAC) / FLAC / WAV / OGG。如果服务端不做转码，DSD（.dsf）、APE、WavPack 等格式就无法播放。</dd>
+        <dt>Android 版支持哪些音频格式？</dt>
+        <dd>内置解码器（BASS 核心 + add-on 插件）：mp3 / m4a(AAC) / FLAC / WAV / OGG，以及 DSD（.dsf）、APE、WavPack、Opus —— 服务端不做转码也能直接播放。服务端对 APE/DSD 这类文件常常不返回后缀，客户端会用 contentType 兜底识别。</dd>
 
         <dt>数据会被上传到云端吗？</dt>
         <dd>不会。客户端没有账号体系，所有请求都直接发往你自己的服务器；服务器密码加密保存在本机（Windows DPAPI、Android KeyStore）。</dd>
