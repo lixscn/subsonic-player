@@ -294,16 +294,34 @@ public final class DlnaController {
         Item next = p.advanceForCast(forward);
         if (next == null) {
             PlayLog.w(TAG, "队列到头了，停止推送");
-            stopCasting(true);
+            stopCastingInternal(true, false);      // 队列都完了，别再交回手机重播最后一首
             return;
         }
         cast(next, null);
     }
 
-    /** 停止推送：可选把远端也 Stop */
-    public void stopCasting(final boolean stopRemote) {
+    /** 停止推送：可选把远端也 Stop，并把播放**交回手机**（从音箱的位置接着放） */
+    public void stopCasting(boolean stopRemote) {
+        stopCastingInternal(stopRemote, true);
+    }
+
+    /**
+     * 本地要起播了（用户点了手机上的播放/点歌）：收掉推送并清状态，
+     * 但**不要**回调去起播本地 —— 否则会和 handBackToPhone 互相递归、重复起播。
+     */
+    public void releaseForLocalPlayback() {
+        stopCastingInternal(true, false);
+    }
+
+    /** 停止推送且**不**交回手机（通知栏的「停止」：用户要的是安静） */
+    public void stopCastingSilently() {
+        stopCastingInternal(true, false);
+    }
+
+    private void stopCastingInternal(final boolean stopRemote, boolean handBack) {
         final DlnaRenderer r = renderer;
         boolean wasCasting = casting;
+        long lastPos = posMs;
         casting = false;
         remoteState = "";
         currentSongId = "";
@@ -319,6 +337,27 @@ public final class DlnaController {
                     return Boolean.TRUE;
                 }
             }, null);
+        }
+        if (handBack && wasCasting) handBackToPhone(lastPos);
+    }
+
+    /**
+     * 推送结束后把播放交回手机：从音箱那边的位置继续用本地播放器播这首。
+     *
+     * <p>推送期间本地是被暂停的（避免两边同时出声），如果就这样收场，用户看到的是
+     * 「音乐没了、App 停在暂停状态」—— 真机反馈「断开后没有换回手机播放」。
+     */
+    private void handBackToPhone(long posMs) {
+        try {
+            Player p = Player.peek();
+            if (p == null || p.current() == null) return;
+            int pos = (int) Math.max(0, posMs);
+            if (pos > 1500) pos -= 500;         // 稍微回退半秒，接缝更自然
+            if (pos < 0) pos = 0;
+            PlayLog.w(TAG, "推送结束 → 交回手机播放 song=" + p.current().id + " pos=" + pos);
+            p.playLocallyFrom(pos);
+        } catch (Throwable t) {
+            PlayLog.w(TAG, "交回手机播放失败", t);
         }
     }
 

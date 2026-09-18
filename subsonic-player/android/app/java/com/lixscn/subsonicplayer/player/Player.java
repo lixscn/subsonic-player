@@ -656,6 +656,11 @@ public class Player {
     private void startCurrent(int seekMs) {
         Item cur = current();
         if (cur == null) return;
+        // 本地要起播了 → 若正在 DLNA 推送，先把音箱那边停掉并清状态，否则两边同时出声。
+        // （这里只负责「收掉推送」，不回调起播，避免和 handBackToPhone 互相递归。）
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+        if (dc != null && dc.isCasting()) dc.releaseForLocalPlayback();
         ensureService();
         restoreSeekMs = Math.max(0, seekMs);
         releasePlayer();
@@ -1771,6 +1776,17 @@ public class Player {
             PlayLog.w(TAG, "复用流转失败，改为重建", t);
             return false;
         }
+    }
+
+    /**
+     * 从指定位置**本地**起播当前曲目。
+     *
+     * <p>给 DLNA 推送用：推送结束（用户点停止 / 音箱掉线）时把播放交回手机，
+     * 从音箱最后播到的位置接着放 —— 用户预期是「断开后回到手机播放」，
+     * 而不是停在暂停状态（真机反馈）。
+     */
+    public void playLocallyFrom(int positionMs) {
+        startCurrent(Math.max(0, positionMs));
     }
 
     /**

@@ -63,12 +63,28 @@ public class PlaybackService extends Service implements Player.Listener {
 
     private final Handler main = new Handler(Looper.getMainLooper());
 
+    /** DLNA 推送状态变化：通知栏/锁屏也要跟着刷新（推送中本地心跳是停的） */
+    private final com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener dlnaListener =
+            new com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener() {
+                @Override
+                public void onCastChanged() {
+                    updateSessionState();
+                    updateNotification();
+                }
+
+                @Override
+                public void onCastError(String message) {
+                    updateNotification();
+                }
+            };
+
     @Override
     public void onCreate() {
         super.onCreate();
         library = Library.get(this);
         player = Player.get(this);
         player.addListener(this);
+        com.lixscn.subsonicplayer.core.dlna.DlnaController.get(this).addListener(dlnaListener);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createChannel();
         setupSession();
@@ -79,14 +95,30 @@ public class PlaybackService extends Service implements Player.Listener {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
         if (action != null) {
+            com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                    com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+            boolean casting = dc != null && dc.isCasting();
             if (ACTION_PLAY_PAUSE.equals(action)) {
-                if (player.isPlaying()) player.pause();
-                else player.resume();   // 焦点申请由 Player 内部完成
+                // 推送中：通知栏/耳机键操作的是**音箱**（否则会出现「手机显示暂停、音箱却在放」）
+                if (casting) {
+                    if (dc.remotePlaying()) dc.pause();
+                    else dc.play();
+                } else if (player.isPlaying()) {
+                    player.pause();
+                } else {
+                    player.resume();   // 焦点申请由 Player 内部完成
+                }
             } else if (ACTION_NEXT.equals(action)) {
-                player.next();
+                if (casting) dc.skip(true);
+                else player.next();
             } else if (ACTION_PREV.equals(action)) {
-                player.previous();
+                if (casting) dc.skip(false);
+                else player.previous();
             } else if (ACTION_STOP.equals(action)) {
+                if (casting) {
+                    // 通知栏的「停止」= 要安静，别再交回手机接着放
+                    dc.stopCastingSilently();
+                }
                 player.pause();
                 stopForegroundCompat();
                 stopSelf();
@@ -106,6 +138,9 @@ public class PlaybackService extends Service implements Player.Listener {
 
     @Override
     public void onDestroy() {
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+        if (dc != null) dc.removeListener(dlnaListener);
         player.removeListener(this);
         if (noisyReceiver != null) {
             try {
@@ -273,24 +308,36 @@ public class PlaybackService extends Service implements Player.Listener {
     private void updateSessionState() {
         if (session == null) return;
         Item cur = player.current();
+        // 推送中：通知栏/锁屏要反映**音箱**在唱（否则手机说「暂停」、音箱却在放，状态对不上）
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+        boolean casting = dc != null && dc.isCasting();
+        String artist = cur == null ? "" : cur.artist;
+        if (casting) {
+            String nm = dc.device() == null ? "DLNA 设备" : dc.device().displayName();
+            artist = artist.length() == 0 ? ("推送到 " + nm) : (artist + " · 推送到 " + nm);
+        }
         MediaMetadata.Builder md = new MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, cur == null ? "" : cur.title)
-                .putString(MediaMetadata.METADATA_KEY_ARTIST, cur == null ? "" : cur.artist)
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
                 .putString(MediaMetadata.METADATA_KEY_ALBUM, cur == null ? "" : cur.album)
-                .putLong(MediaMetadata.METADATA_KEY_DURATION, player.durationMs());
+                .putLong(MediaMetadata.METADATA_KEY_DURATION,
+                        casting ? dc.durationMs() : player.durationMs());
         if (artwork != null && cur != null && cur.id.equals(artworkSongId)) {
             md.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artwork);
         }
         session.setMetadata(md.build());
 
-        int state = player.isPlaying() ? PlaybackState.STATE_PLAYING
+        boolean playing = casting ? dc.remotePlaying() : player.isPlaying();
+        long pos = casting ? dc.positionMs() : player.positionMs();
+        int state = playing ? PlaybackState.STATE_PLAYING
                 : (player.current() == null ? PlaybackState.STATE_NONE : PlaybackState.STATE_PAUSED);
         PlaybackState.Builder pb = new PlaybackState.Builder()
                 .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
                         | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT
                         | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO
                         | PlaybackState.ACTION_STOP)
-                .setState(state, player.positionMs(), player.isPlaying() ? 1f : 0f);
+                .setState(state, pos, playing ? 1f : 0f);
         session.setPlaybackState(pb.build());
     }
 

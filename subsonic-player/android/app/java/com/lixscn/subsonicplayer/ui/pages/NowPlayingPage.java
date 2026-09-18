@@ -158,13 +158,20 @@ public class NowPlayingPage extends Page {
                 @Override
                 public void onCastChanged() {
                     if (cover == null) return;
-                    // 推送中本地心跳是停的（本地播放被暂停了）→ 这里必须用**音箱**的进度驱动界面，
-                    // 否则进度条会冻在本地那首的最后一帧上
                     com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
                     if (d != null && d.isCasting()) {
+                        // 推送中：进度/按钮以**音箱**为准（本地播放已暂停）
                         updatePlayIcon(d.remotePlaying());
                         updateProgress((int) d.positionMs(), (int) d.durationMs());
                         updateLyricHighlight((int) d.positionMs());
+                        if (seekBar != null) seekBar.setSecondaryProgress(0);
+                    } else {
+                        // 推送结束（主动停止 / 设备掉线 / 队列到头）→ 按钮与进度必须回到**本地**播放器的状态。
+                        // 少了这一步就会停在音箱最后一帧：本地明明没在播，播放键却显示成暂停图标
+                        // （真机反馈「连接 DLNA 后播放按键状态不对」）。
+                        updatePlayIcon(player.isPlaying());
+                        updateProgress(player.positionMs(), player.durationMs());
+                        updateLyricHighlight(player.positionMs());
                         if (seekBar != null) seekBar.setSecondaryProgress(0);
                     }
                     syncCastUi();
@@ -232,21 +239,56 @@ public class NowPlayingPage extends Page {
                 .setNeutralButton("重新搜索", null)
                 .create();
         dlg.show();
+        // 弹窗底板也跟主题走（平台对话框只有深/浅两套，跟我们的 6 套主题色不一致）
+        try {
+            dlg.getWindow().setBackgroundDrawable(Ui.rect(c.surface, Ui.dp(act, 16)));
+        } catch (Throwable ignored) {
+        }
 
         final Runnable[] rescan = new Runnable[1];
+        // 推送状态变化时（从本对话框里推上去了、或设备掉线自动停了）列表要跟着重画 ——
+        // 否则会出现「明明在推送，对话框里却没有那台设备/没有停止按钮」（真机反馈状态对不上）
+        final java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> lastDevices =
+                new java.util.ArrayList<com.lixscn.subsonicplayer.core.dlna.DlnaDevice>();
+        final String[] lastError = new String[]{null};
+        final com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener dlgListener =
+                new com.lixscn.subsonicplayer.core.dlna.DlnaController.Listener() {
+                    @Override
+                    public void onCastChanged() {
+                        if (act == null) return;
+                        fillCastList(dc, c, list, status, lastDevices, lastError[0]);
+                    }
+
+                    @Override
+                    public void onCastError(String message) {
+                    }
+                };
+        dc.addListener(dlgListener);
+        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(android.content.DialogInterface d) {
+                dc.removeListener(dlgListener);
+            }
+        });
+
         rescan[0] = new Runnable() {
             @Override
             public void run() {
                 if (act == null) return;
                 status.setText("正在搜索局域网里的 DLNA 设备…（音箱/功放要和手机连同一个 Wi-Fi）");
                 list.removeAllViews();
+                lastDevices.clear();
+                lastError[0] = null;
                 fillCastList(dc, c, list, status, null, null);   // 先只画「正在推送」那一行
                 dc.scan(5000, new com.lixscn.subsonicplayer.core.dlna.DlnaDiscovery.Callback() {
                     @Override
                     public void onDone(java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> devices,
                                        String error) {
                         if (act == null) return;
-                        fillCastList(dc, c, list, status, devices, error);
+                        lastDevices.clear();
+                        if (devices != null) lastDevices.addAll(devices);
+                        lastError[0] = error;
+                        fillCastList(dc, c, list, status, lastDevices, error);
                     }
                 });
             }
@@ -327,13 +369,15 @@ public class NowPlayingPage extends Page {
         return s.toString();
     }
 
-    /** 一行设备：圆角卡片 + cast 图标 + 名称/副标题 + 右侧「停止推送」或 › */
+    /** 一行设备：圆角卡片（跟随主题底色 + 描边）+ cast 图标 + 名称/副标题 + 右侧「停止推送」或 › */
     private View castRow(Theme.Colors c, String title, String sub, boolean active,
                          String actionText, View.OnClickListener onClick) {
         LinearLayout row = Ui.row(act);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(Ui.dp(act, 12), Ui.dp(act, 12), Ui.dp(act, 12), Ui.dp(act, 12));
-        row.setBackground(Ui.rect(active ? c.surface : c.surfaceAlt, Ui.dp(act, 12)));
+        // 卡片底色用主题的 surfaceAlt，再配一圈描边：这样在深色/浅色/彩色主题的弹窗上都分得清
+        row.setBackground(Ui.rect(c.surfaceAlt, Ui.dp(act, 12),
+                active ? c.accent : c.border, Ui.dp(act, 1)));
 
         row.addView(Ui.icon(act, R.drawable.ic_cast, 20, active ? c.accent : c.textDim),
                 Ui.lp(Ui.dp(act, 24), Ui.dp(act, 24)));
