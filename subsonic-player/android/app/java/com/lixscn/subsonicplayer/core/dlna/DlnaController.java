@@ -26,6 +26,8 @@ public final class DlnaController {
 
     private static final String TAG = "Dlna";
     private static final long POLL_INTERVAL_MS = 1500;
+    /** 连续多少次轮询失败就认定设备掉了（约 8 秒）—— 否则会永远每 1.5 秒重试一次、界面卡在「正在推送」 */
+    private static final int POLL_FAIL_LIMIT = 5;
 
     private static DlnaController sInst;
 
@@ -51,6 +53,8 @@ public final class DlnaController {
     private volatile String currentTitle = "";
     private boolean polling;
     private int pollGen;
+    /** 连续轮询失败次数（音箱断电/换网时会一直连不上，必须能自己收场） */
+    private int pollFailures;
     /** 我们自己发的 Stop（用来区分「用户停的」和「这首放完了」） */
     private volatile boolean expectedStop;
 
@@ -361,6 +365,7 @@ public final class DlnaController {
         //   「远端播完 → 自动推下一首」那条路径里 pollOnce 是 return 掉的，
         //   若这里不重新起，轮询就永久停摆 —— 表现为进度不动、也不再自动切歌。
         polling = true;
+        pollFailures = 0;           // 新一轮推送：失败计数清零
         final int gen = ++pollGen;
         main.post(new Runnable() {
             @Override
@@ -393,10 +398,12 @@ public final class DlnaController {
             public void ok(String[] v) {
                 if (!polling || gen != pollGen) return;
                 if (v == null || v[0].length() == 0) {
-                    // 一次失败不当回事（音箱在切状态时会短暂拒绝请求）
-                    scheduleNextPoll(gen);
+                    // 单次失败不当回事（音箱切状态时会短暂拒绝请求），但连着失败就要收场
+                    pollFailed();
+                    if (polling && gen == pollGen) scheduleNextPoll(gen);
                     return;
                 }
+                pollFailures = 0;
                 String prev = remoteState;
                 remoteState = v[0];
                 if (!"-1".equals(v[1])) posMs = Long.parseLong(v[1]);
@@ -421,9 +428,30 @@ public final class DlnaController {
 
             @Override
             public void fail(String message) {
+                if (!polling || gen != pollGen) return;
+                pollFailed();
                 if (polling && gen == pollGen) scheduleNextPoll(gen);
             }
         });
+    }
+
+    /**
+     * 轮询失败累计：连着 {@link #POLL_FAIL_LIMIT} 次连不上就自动结束推送。
+     *
+     * <p>没有这一步的话，音箱关掉/换网之后 App 会每 1.5 秒永远重试下去，
+     * 界面一直停在「推送到 XXX」，用户既没法继续也没法退出（真机反馈过）。
+     */
+    private void pollFailed() {
+        pollFailures++;
+        if (pollFailures == 1) {
+            PlayLog.w(TAG, "轮询失败（音箱暂时没响应，继续观察）");
+        }
+        if (pollFailures >= POLL_FAIL_LIMIT) {
+            String nm = device == null ? "DLNA 设备" : device.displayName();
+            PlayLog.w(TAG, "连续 " + pollFailures + " 次连不上 " + nm + " → 自动结束推送");
+            stopCasting(false);          // 设备都不可达了，别再去发 Stop
+            notifyError("连不上 " + nm + " 了，已停止推送");
+        }
     }
 
     private void scheduleNextPoll(final int gen) {

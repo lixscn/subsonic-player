@@ -108,18 +108,26 @@ public final class DlnaDiscovery {
         DatagramSocket sock = new DatagramSocket();
         handle.socket = sock;
         try {
-            sock.setSoTimeout(400);
+            sock.setSoTimeout(300);
             byte[] m1 = msearch(ST_RENDERER).getBytes("UTF-8");
             byte[] m2 = msearch(ST_ALL).getBytes("UTF-8");
             InetAddress group = InetAddress.getByName(SSDP_ADDR);
-            sock.send(new DatagramPacket(m1, m1.length, group, SSDP_PORT));
-            sock.send(new DatagramPacket(m2, m2.length, group, SSDP_PORT));
-            PlayLog.w(TAG, "SSDP M-SEARCH 已发出（MediaRenderer + ssdp:all），等待 " + waitMs + "ms");
 
             Map<String, String> locations = new LinkedHashMap<String, String>();
-            long deadline = System.currentTimeMillis() + Math.max(1200, waitMs);
+            long deadline = System.currentTimeMillis() + Math.max(1500, waitMs);
+            long nextSend = 0;
+            int sent = 0;
             byte[] buf = new byte[4096];
             while (!handle.isCancelled() && System.currentTimeMillis() < deadline) {
+                // M-SEARCH 走 UDP 多播：丢包很常见，而且有些设备只回应其中一种 ST
+                // → 整个扫描窗口里每隔 1.2 秒重发一次（实测重发能多发现设备）
+                long now = System.currentTimeMillis();
+                if (now >= nextSend) {
+                    sock.send(new DatagramPacket(m1, m1.length, group, SSDP_PORT));
+                    sock.send(new DatagramPacket(m2, m2.length, group, SSDP_PORT));
+                    sent++;
+                    nextSend = now + 1200;
+                }
                 try {
                     DatagramPacket p = new DatagramPacket(buf, buf.length);
                     sock.receive(p);
@@ -133,7 +141,11 @@ public final class DlnaDiscovery {
                     // 正常：继续等剩下的时间
                 }
             }
-            if (locations.isEmpty()) PlayLog.w(TAG, "SSDP 没有任何应答（该网段可能没有 DLNA 渲染器）");
+            PlayLog.w(TAG, "SSDP 扫描结束：M-SEARCH 发出 " + sent + " 轮，收到 "
+                    + locations.size() + " 个应答");
+            if (locations.isEmpty()) {
+                PlayLog.w(TAG, "SSDP 没有任何应答（该网段可能没有 DLNA 渲染器，或不在同一局域网）");
+            }
 
             List<DlnaDevice> out = new ArrayList<DlnaDevice>();
             for (Map.Entry<String, String> e : locations.entrySet()) {

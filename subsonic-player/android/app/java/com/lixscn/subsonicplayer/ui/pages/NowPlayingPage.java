@@ -206,133 +206,201 @@ public class NowPlayingPage extends Page {
     }
 
     /**
-     * 「推送到 DLNA 设备」：先扫 4 秒 → 列出设备 → 选中后把**当前这首**推过去。
-     * 以后播放页的播放/暂停/上一首/下一首/进度都直接操作音箱（本地播放会先暂停）。
+     * 「推送到 DLNA 设备」：扫 5 秒 → 列出设备 → 选中即把**当前这首**推过去。
+     * 推送中播放页的播放/暂停/上一首/下一首/进度都直接操作音箱（本地播放会先暂停）。
+     *
+     * <p>要点：**搜不到设备时也必须能停推送** —— 「正在推送」那一行永远画在最上面。
+     * 否则音箱一断电/换网，用户就被卡在「正在推送」里出不来（真机反馈过）。
      */
     private void showCastDialog() {
         final com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
                 com.lixscn.subsonicplayer.core.dlna.DlnaController.get(act);
-        final android.app.AlertDialog searching = Ui.dialog(act)
-                .setTitle("DLNA 推送")
-                .setMessage("正在搜索局域网里的 DLNA 设备…\n（约 4 秒；音箱/功放要和手机在同一个网络）")
-                .setNegativeButton("取消", null)
+        final Theme.Colors c = Ui.colors(act);
+
+        final LinearLayout box = Ui.column(act);
+        box.setPadding(Ui.dp(act, 6), Ui.dp(act, 4), Ui.dp(act, 6), Ui.dp(act, 2));
+        final TextView status = Ui.text(act, "", 12.5f, c.textFaint);
+        status.setPadding(Ui.dp(act, 14), Ui.dp(act, 8), Ui.dp(act, 14), Ui.dp(act, 10));
+        box.addView(status, Ui.lpMatchWrap());
+        final LinearLayout list = Ui.column(act);
+        box.addView(list, Ui.lpMatchWrap());
+
+        final android.app.AlertDialog dlg = Ui.dialog(act)
+                .setTitle("推送到 DLNA 设备")
+                .setView(box)
+                .setNegativeButton("关闭", null)
+                .setNeutralButton("重新搜索", null)
                 .create();
-        searching.show();
+        dlg.show();
 
-        dc.scan(4000, new com.lixscn.subsonicplayer.core.dlna.DlnaDiscovery.Callback() {
+        final Runnable[] rescan = new Runnable[1];
+        rescan[0] = new Runnable() {
             @Override
-            public void onDone(java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> devices, String error) {
+            public void run() {
                 if (act == null) return;
-                try {
-                    searching.dismiss();
-                } catch (Throwable ignored) {
-                }
+                status.setText("正在搜索局域网里的 DLNA 设备…（音箱/功放要和手机连同一个 Wi-Fi）");
+                list.removeAllViews();
+                fillCastList(dc, c, list, status, null, null);   // 先只画「正在推送」那一行
+                dc.scan(5000, new com.lixscn.subsonicplayer.core.dlna.DlnaDiscovery.Callback() {
+                    @Override
+                    public void onDone(java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> devices,
+                                       String error) {
+                        if (act == null) return;
+                        fillCastList(dc, c, list, status, devices, error);
+                    }
+                });
+            }
+        };
+        dlg.getButton(android.content.DialogInterface.BUTTON_NEUTRAL)
+                .setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        rescan[0].run();
+                    }
+                });
+        rescan[0].run();
+    }
 
-                final java.util.List<String> labels = new java.util.ArrayList<String>();
-                final java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> list =
-                        new java.util.ArrayList<com.lixscn.subsonicplayer.core.dlna.DlnaDevice>();
-                final boolean castingNow = dc.isCasting();
-                if (castingNow) labels.add("停止推送（" + dc.device().displayName() + "）");
-                for (com.lixscn.subsonicplayer.core.dlna.DlnaDevice d : devices) {
-                    list.add(d);
-                    String extra = (d.model != null && d.model.length() > 0) ? "  ·  " + d.model : "";
-                    labels.add(d.displayName() + extra);
-                }
+    /** 画设备列表：正在推送的那台（带「停止推送」） + 搜到的设备 + 空结果提示 */
+    private void fillCastList(final com.lixscn.subsonicplayer.core.dlna.DlnaController dc,
+                              final Theme.Colors c, final LinearLayout list, final TextView status,
+                              final java.util.List<com.lixscn.subsonicplayer.core.dlna.DlnaDevice> devices,
+                              final String error) {
+        list.removeAllViews();
 
-                if (list.isEmpty()) {
-                    StringBuilder msg = new StringBuilder();
-                    msg.append("没有找到 DLNA 设备。\n\n")
-                            .append("· 音箱/功放要和手机在同一个 Wi-Fi 下；\n")
-                            .append("· 有些设备待机时不响应发现，先唤醒它再试；\n")
-                            .append("· 需要设备支持 UPnP AV 的 MediaRenderer（Sonos / WiiM / 多数网络功放都支持）。");
-                    if (error != null && error.length() > 0) msg.append("\n\n扫描异常：").append(error);
-                    Ui.dialog(act).setTitle("没找到 DLNA 设备").setMessage(msg.toString())
-                            .setPositiveButton("重新搜索", new android.content.DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(android.content.DialogInterface d, int w) {
-                                    showCastDialog();
-                                }
-                            })
-                            .setNegativeButton("取消", null).show();
+        // 1) 正在推送的设备：永远第一行、永远能停（这是「搜不到就退不出来」那个坑的解药）
+        if (dc.isCasting() && dc.device() != null) {
+            final com.lixscn.subsonicplayer.core.dlna.DlnaDevice cur = dc.device();
+            list.addView(castRow(c, cur.displayName(),
+                    dc.remotePlaying() ? "正在推送 · 播放中" : "正在推送 · 已暂停",
+                    true, "停止推送", new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            dc.stopCasting(true);
+                            syncCastUi();
+                            act.toast("已停止推送");
+                            status.setText("已停止推送。要重新推送，点下面任意一台设备。");
+                            fillCastList(dc, c, list, status, devices, error);
+                        }
+                    }));
+        }
+
+        if (devices == null) return;        // 还在搜，先把上面那行显示出来
+
+        // 2) 搜到的设备
+        int n = 0;
+        for (final com.lixscn.subsonicplayer.core.dlna.DlnaDevice d : devices) {
+            if (dc.isCasting() && dc.device() != null && dc.device().sameAs(d)) continue;  // 已在上面的行里
+            StringBuilder sub = new StringBuilder();
+            if (d.model != null && d.model.length() > 0) sub.append(d.model);
+            if (d.host != null && d.host.length() > 0) {
+                if (sub.length() > 0) sub.append(" · ");
+                sub.append(d.host);
+            }
+            list.addView(castRow(c, d.displayName(), sub.toString(), false, null,
+                    new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            connectAndCast(d);
+                        }
+                    }));
+            n++;
+        }
+
+        // 3) 状态行 + （搜不到时的）提示。提示放在设备行**下面**，上面那台「正在推送」才是主角
+        if (n == 0) {
+            status.setText(dc.isCasting() ? "没搜到其他设备（当前这台还在用）" : "没搜到 DLNA 设备");
+            TextView hint = Ui.text(act, emptyCastHint(error), 11.5f, c.textFaint);
+            hint.setPadding(Ui.dp(act, 6), Ui.dp(act, 12), Ui.dp(act, 6), Ui.dp(act, 4));
+            list.addView(hint, Ui.lpMatchWrap());
+        } else {
+            status.setText("发现 " + n + " 台设备，点一下就能推过去");
+        }
+    }
+
+    private static String emptyCastHint(String error) {
+        StringBuilder s = new StringBuilder();
+        s.append("· 音箱/功放要和手机连同一个 Wi-Fi；\n")
+                .append("· 有些设备待机时不响应发现，先叫醒它；\n")
+                .append("· 需要设备支持 UPnP/DLNA 的 MediaRenderer（Sonos、WiiM、多数网络功放都行）。");
+        if (error != null && error.length() > 0) s.append("\n· 扫描异常：").append(error);
+        return s.toString();
+    }
+
+    /** 一行设备：圆角卡片 + cast 图标 + 名称/副标题 + 右侧「停止推送」或 › */
+    private View castRow(Theme.Colors c, String title, String sub, boolean active,
+                         String actionText, View.OnClickListener onClick) {
+        LinearLayout row = Ui.row(act);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(act, 12), Ui.dp(act, 12), Ui.dp(act, 12), Ui.dp(act, 12));
+        row.setBackground(Ui.rect(active ? c.surface : c.surfaceAlt, Ui.dp(act, 12)));
+
+        row.addView(Ui.icon(act, R.drawable.ic_cast, 20, active ? c.accent : c.textDim),
+                Ui.lp(Ui.dp(act, 24), Ui.dp(act, 24)));
+
+        LinearLayout col = Ui.column(act);
+        LinearLayout.LayoutParams clp = Ui.lpWeight(1);
+        clp.leftMargin = Ui.dp(act, 12);
+        col.addView(Ui.text(act, title, 15f, active ? c.accent : c.text), Ui.lpMatchWrap());
+        TextView t2 = Ui.text(act, sub == null ? "" : sub, 11.5f, c.textFaint);
+        if (sub == null || sub.length() == 0) t2.setVisibility(View.GONE);
+        col.addView(t2, Ui.lpMatchWrap());
+        row.addView(col, clp);
+
+        if (actionText != null) {
+            TextView stop = Ui.text(act, actionText, 13f, c.danger);
+            stop.setPadding(Ui.dp(act, 10), Ui.dp(act, 6), Ui.dp(act, 6), Ui.dp(act, 6));
+            row.addView(stop);
+        } else {
+            row.addView(Ui.icon(act, R.drawable.ic_chevron, 16, c.textFaint),
+                    Ui.lp(Ui.dp(act, 20), Ui.dp(act, 20)));
+        }
+        if (onClick != null) {
+            row.setOnClickListener(onClick);
+            Ui.tappable(row, act, c.text, 12f);
+        }
+
+        LinearLayout.LayoutParams lp = Ui.lpMatchWrap();
+        lp.topMargin = Ui.dp(act, 6);
+        row.setLayoutParams(lp);
+        return row;
+    }
+
+    /** 连接某台设备 + 把当前这首推过去 */
+    private void connectAndCast(final com.lixscn.subsonicplayer.core.dlna.DlnaDevice dev) {
+        final com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.get(act);
+        act.toast("正在连接 " + dev.displayName() + "…");
+        dc.connect(dev, new com.lixscn.subsonicplayer.core.Library.Done<Boolean>() {
+            @Override
+            public void ok(Boolean value) {
+                final Item cur = player.current();
+                if (cur == null) {
+                    act.toast("还没有播放内容，先点一首歌");
                     return;
                 }
+                dc.cast(cur, new com.lixscn.subsonicplayer.core.Library.Done<Boolean>() {
+                    @Override
+                    public void ok(Boolean v) {
+                        syncCastUi();
+                        act.toast("已推送到 " + dev.displayName());
+                    }
 
-                labels.add("重新搜索");
-                final int offset = castingNow ? 1 : 0;
-                Ui.dialog(act).setTitle("推送到哪台设备")
-                        .setItems(labels.toArray(new String[0]),
-                                new android.content.DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(android.content.DialogInterface d, int which) {
-                                        if (castingNow && which == 0) {
-                                            dc.stopCasting(true);
-                                            syncCastUi();
-                                            act.toast("已停止推送");
-                                            return;
-                                        }
-                                        if (which == labels.size() - 1) {
-                                            showCastDialog();
-                                            return;
-                                        }
-                                        final com.lixscn.subsonicplayer.core.dlna.DlnaDevice dev =
-                                                list.get(which - offset);
-                                        act.toast("正在连接 " + dev.displayName() + "…");
-                                        dc.connect(dev, new com.lixscn.subsonicplayer.core.Library.Done<Boolean>() {
-                                            @Override
-                                            public void ok(Boolean value) {
-                                                final Item cur = player.current();
-                                                if (cur == null) {
-                                                    act.toast("还没有播放内容，先点一首歌");
-                                                    return;
-                                                }
-                                                dc.cast(cur, new com.lixscn.subsonicplayer.core.Library.Done<Boolean>() {
-                                                    @Override
-                                                    public void ok(Boolean v) {
-                                                        syncCastUi();
-                                                        act.toast("已推送到 " + dev.displayName());
-                                                    }
+                    @Override
+                    public void fail(String message) {
+                        act.toast("推送失败：" + message);
+                    }
+                });
+            }
 
-                                                    @Override
-                                                    public void fail(String message) {
-                                                        act.toast("推送失败：" + message);
-                                                    }
-                                                });
-                                            }
-
-                                            @Override
-                                            public void fail(String message) {
-                                                act.toast("连接失败：" + message);
-                                            }
-                                        });
-                                    }
-                                })
-                        .setNegativeButton("取消", null)
-                        .show();
+            @Override
+            public void fail(String message) {
+                act.toast("连接失败：" + message);
             }
         });
     }
 
-    // ---------------- Page ----------------
 
-    @Override
-    public String title() {
-        return "正在播放";
-    }
-
-    /** 全屏页：不显示迷你播放条 */
-    @Override
-    public boolean showMiniPlayer() {
-        return false;
-    }
-
-    @Override
-    public boolean onBack() {
-        if (act == null) return false;
-        act.pop();
-        return true;
-    }
-
-    @Override
     protected View build() {
         final Theme.Colors c = Ui.colors(act);
 
