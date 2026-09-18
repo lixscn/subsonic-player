@@ -117,16 +117,61 @@ public class Player {
         }
     }
 
+    // ---------------- 息屏播放的 CPU 唤醒锁 ----------------
+
+    /**
+     * 播放期间持有 {@code PARTIAL_WAKE_LOCK}。
+     *
+     * <p>为什么需要：清单里本来就声明了 WAKE_LOCK 权限却从没用过。屏幕一关，某些 ROM
+     * （实测 MIUI）会冻结后台进程或把 {@code Handler} 定时器拖到很晚 —— 音频还能从缓冲里出，
+     * 但**心跳（每 500ms 的那个 Runnable）跑不动**，于是「一首放完不切下一首」，
+     * 蓝牙车里最典型。持有唤醒锁能让心跳按时跑完。
+     */
+    private void acquireWake() {
+        try {
+            if (wakeLock == null) {
+                android.os.PowerManager pm = (android.os.PowerManager)
+                        appCtx.getSystemService(Context.POWER_SERVICE);
+                if (pm == null) return;
+                wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "subsonic:playback");
+                wakeLock.setReferenceCounted(false);
+            }
+            if (!wakeLock.isHeld()) wakeLock.acquire();
+        } catch (Throwable t) {
+            PlayLog.w(TAG, "获取唤醒锁失败（不影响播放）", t);
+        }
+    }
+
+    private void releaseWake() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        } catch (Throwable ignored) {
+        }
+    }
+
 
     private void handleFocusChange(int change) {
-        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+        if (change == AudioManager.AUDIOFOCUS_LOSS) {
+            // 永久失去（别的 App 开始放）：不自动恢复
+            hasFocus = false;
+            focusAutoPaused = false;
+            pause();
+        } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            // 临时失去（导航播报/来电/车机切源）：先暂停，**记住是自动暂停的**
+            boolean wasPlaying = playing;
             hasFocus = false;
             pause();
+            focusAutoPaused = wasPlaying;
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
             setDuckFactor(0.3f);
         } else if (change == AudioManager.AUDIOFOCUS_GAIN) {
             hasFocus = true;
             setDuckFactor(1f);
+            if (focusAutoPaused) {
+                focusAutoPaused = false;
+                PlayLog.w(TAG, "音频焦点回来了，自动续播");
+                resume();
+            }
         }
     }
 
@@ -202,6 +247,13 @@ public class Player {
     private int volumePercent = 100;
     /** 临时压低系数（音频焦点被 duck 时用，不写入设置） */
     private float duckFactor = 1f;
+    /** 播放期间的 CPU 唤醒锁（屏幕关闭时保证心跳能按时跑） */
+    private android.os.PowerManager.WakeLock wakeLock;
+    /**
+     * 是「因临时失去音频焦点」而自动暂停的：焦点回来时自动续播。
+     * 车机场景最常见（导航播报、来电、切了一下收音机），以前焦点回来**不会**续播，音乐就一直停着。
+     */
+    private boolean focusAutoPaused;
     private boolean scrobbledCurrent;
     private int restoreSeekMs;
     /** 随机模式的历史顺序，保证「上一首」可用 */
@@ -217,7 +269,9 @@ public class Player {
                 // 断流检测：网络中断时 BASS 会把流置为 STOPPED(0)，网速跟不上则是 STALLED(3)。
                 // 只要还没播到曲尾，就自动重连并从断点续播（最多 3 次）。
                 int st = BassNative.nativeState(bassStream);
-                boolean nearEnd = durationMs > 0 && positionMs >= durationMs - 1500;
+                // 曲尾判定窗口给到 3 秒：BASS 的位置读数会跳、断流时还会停在最后一两秒不动，
+                // 窗口太窄（原来 1.5s）就会「差一点点没进曲尾」→ 既不判结束也不走断流分支。
+                boolean nearEnd = durationMs > 0 && positionMs >= durationMs - 3000;
                 // 曲目自然结束：BASS 没有 onCompletion 回调（MediaPlayer 才有），
                 // 所以必须在这里补上收尾逻辑 —— 否则播完就停在那，不会自动下一首。
                 //
@@ -270,9 +324,22 @@ public class Player {
                     bassStallTicks = 0;
                 }
                 maybeScrobble();
-                preloadNext();
+                // 这两步各自都不该把心跳带走：一旦抛出，后面的 postDelayed 就不执行了 → 心跳永久停摆
+                try {
+                    preloadNext();
+                } catch (Throwable t) {
+                    PlayLog.w(TAG, "预取异常（忽略）", t);
+                }
                 notifyProgress();
-                if (isPlaying()) main.postDelayed(this, 500);
+                // ★ 只要这条 BASS 流还活着就继续心跳。以前写的是 if (isPlaying())，
+                //   而 BASS 在「曲尾 / 卡顿」时返回 STOPPED(0)/STALLED(3) → isPlaying() 为 false
+                //   → 心跳当场停摆：既不会「播完切下一首」，断流也永远等不到重连。
+                //   真机 2026-09-18 早上的蓝牙场景就是它（08:54 卡住后一直不切歌，
+                //   直到 09:10 用户点亮屏幕触发 resume() 才补上「下一首」）。
+                if (bassStream != 0 || buffering) {
+                    main.removeCallbacks(this);      // 保证只有一份在排队
+                    main.postDelayed(this, 500);
+                }
                 return;
             }
             if (mp != null && playing) {
@@ -582,6 +649,7 @@ public class Player {
         if (url == null || url.length() == 0) {
             preparing = false;
             buffering = false;      // 必须一起清：否则界面永远停在「缓冲中…」（用户以为在加载，其实什么都没发生）
+            releaseWake();
             notifyError("无法获取播放地址");
             return;
         }
@@ -639,6 +707,7 @@ public class Player {
                             }
                             m.start();
                             playing = true;
+                            acquireWake();
                             main.removeCallbacks(ticker);
                             main.post(ticker);
                         } catch (Exception e) {
@@ -915,6 +984,7 @@ public class Player {
                 }
                 preparing = false;
                 buffering = false;
+                releaseWake();          // 彻底放不了：别一直攥着唤醒锁
                 notifyError("BASS 打不开此曲（错误码 " + err + "）：" + FormatSupport.unsupportedReason(song));
                 return;
             }
@@ -933,6 +1003,7 @@ public class Player {
             }
             boolean ok = BassNative.nativePlay(bassStream, true);
             playing = ok && playWhenReady;
+            if (playing) acquireWake();
             buffering = false;
             PlayLog.w(TAG, "BASS 播放 song=" + song.id + " suffix=" + FormatSupport.suffixOf(song)
                     + " ok=" + ok + " dur=" + BassNative.nativeDurationSec(bassStream));
@@ -1445,6 +1516,7 @@ public class Player {
             }
             boolean ok = BassNative.nativePlay(bassStream, true);
             playing = ok && playWhenReady;
+            if (playing) acquireWake();
             buffering = false;
             if (playing) {
                 main.removeCallbacks(ticker);
@@ -1498,6 +1570,7 @@ public class Player {
     }
 
     public void pause() {
+        focusAutoPaused = false;   // 用户主动暂停：之后焦点回来也不该自己续播
         playWhenReady = false;
         if (bassStream != 0) BassNative.nativePause(bassStream);
         if (mp != null && playing) {
@@ -1508,6 +1581,7 @@ public class Player {
         }
         playing = false;
         main.removeCallbacks(ticker);
+        releaseWake();
         abandonFocus();
         notifyProgress();
         saveState();
@@ -1532,6 +1606,7 @@ public class Player {
             if (!acquireFocus()) return;
             BassNative.nativePlay(bassStream, false);
             playing = true;
+            acquireWake();
             main.removeCallbacks(ticker);
             main.post(ticker);
             notifyProgress();
@@ -1546,6 +1621,7 @@ public class Player {
             if (!acquireFocus()) return;
             mp.start();
             playing = true;
+            acquireWake();
             main.removeCallbacks(ticker);
             main.post(ticker);
             Item c = current();
@@ -1561,8 +1637,10 @@ public class Player {
     private void stopInternal() {
         playing = false;
         buffering = false;
+        focusAutoPaused = false;
         main.removeCallbacks(ticker);
         releasePlayer();
+        releaseWake();
         abandonFocus();
         positionMs = 0;
         durationMs = 0;

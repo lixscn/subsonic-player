@@ -201,3 +201,12 @@ powershell -File tools\dev-push-config.ps1
 14. **起播要确保前台服务在跑**：`Player.startCurrent()` 里统一 `startService(PlaybackService)`。
    以前只有 `MainActivity.playNow()` 会调 —— 从**播放队列页**点歌、按耳机键切歌都绕过了它，
    结果是「有声音但没有通知栏/锁屏控制，退到后台还可能被系统回收」。
+15. **心跳（ticker）不能用 `isPlaying()` 当续命条件**：`isPlaying()` = `nativeState() == 1`，
+   而 BASS 在曲尾 `STOPPED(0)` / 卡顿 `STALLED(3)` 时都返回非 1 → 心跳当场永久停摆，
+   **既不会「播完切下一首」，断流重连也永远等不到**（重连逻辑本身就在心跳里）。
+   现在只要还有活的流就继续跑，并先 `removeCallbacks` 再 `postDelayed` 保证只有一份排队；
+   曲尾判定窗口给 3 秒（窗口太窄时「曲尾」和「断流」两条分支都不进 → 卡死）。
+   实测（2026-09-18 早上蓝牙车里）：08:54 卡住后 15 分钟不切歌，直到点亮屏幕触发 `resume()` 才补上。
+16. **播放期间要持有 `PARTIAL_WAKE_LOCK`**（清单里声明了 WAKE_LOCK 权限但以前从没用过）：
+   屏幕关闭时保证心跳按时跑；暂停 / 停止 / 彻底放不了时释放。
+   音频焦点也要区分「永久失去」和「临时失去」—— 后者（导航播报、来电、车机切源）焦点回来要自动续播。
