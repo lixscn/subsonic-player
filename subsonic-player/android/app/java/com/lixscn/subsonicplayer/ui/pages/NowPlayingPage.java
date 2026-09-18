@@ -1106,24 +1106,56 @@ public class NowPlayingPage extends Page {
 
     private void showVolumeDialog() {
         Theme.Colors c = Ui.colors(act);
+        final boolean cast = casting();
         LinearLayout wrap = Ui.column(act);
         wrap.setPadding(Ui.dp(act, 24), Ui.dp(act, 10), Ui.dp(act, 24), 0);
-        final TextView label = Ui.text(act, "音量 " + player.volumePercent() + "%", 13, c.textDim);
+        final int start = cast ? 50 : player.volumePercent();
+        final TextView label = Ui.text(act, cast ? "音箱音量（读取中…）" : ("音量 " + start + "%"), 13, c.textDim);
         final SeekBar bar = new SeekBar(act);
         bar.setMax(100);
-        bar.setProgress(player.volumePercent());
+        bar.setProgress(start);
         try {
             bar.setProgressTintList(ColorStateList.valueOf(c.accent));
             bar.setThumbTintList(ColorStateList.valueOf(c.accent));
         } catch (Throwable ignored) {
             // 忽略：不影响功能
         }
+        // 推送中：音量归**音箱**管（RenderingControl）。读数要发 SOAP，所以丢后台线程读。
+        if (cast) {
+            final com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
+            lib.run(new com.lixscn.subsonicplayer.core.Library.Work<Integer>() {
+                @Override
+                public Integer run() {
+                    return Integer.valueOf(d.volume());
+                }
+            }, new com.lixscn.subsonicplayer.core.Library.Done<Integer>() {
+                @Override
+                public void ok(Integer v) {
+                    if (v == null || v.intValue() < 0) {
+                        label.setText("音箱音量（该设备不支持读数）");
+                        return;
+                    }
+                    bar.setProgress(v.intValue());
+                    label.setText("音箱音量 " + v + "%");
+                }
+
+                @Override
+                public void fail(String message) {
+                    label.setText("音箱音量（读取失败）");
+                }
+            });
+        }
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
                 if (!fromUser) return;
-                player.setVolumePercent(progress);
-                label.setText("音量 " + progress + "%");
+                if (cast) {
+                    // 拖动过程只更新文字；真正发 SOAP 放到松手时（否则一次拖动会打出几十个请求）
+                    label.setText("音箱音量 " + progress + "%");
+                } else {
+                    player.setVolumePercent(progress);
+                    label.setText("音量 " + progress + "%");
+                }
             }
 
             @Override
@@ -1132,10 +1164,14 @@ public class NowPlayingPage extends Page {
 
             @Override
             public void onStopTrackingTouch(SeekBar sb) {
+                if (cast) {
+                    com.lixscn.subsonicplayer.core.dlna.DlnaController d = dlna();
+                    if (d != null) d.setVolume(sb.getProgress());
+                }
             }
         });
         wrap.addView(label, Ui.lpMatchWrap());
         wrap.addView(bar, Ui.lpMatchWrap());
-        Ui.dialog(act).setTitle("音量").setView(wrap).setPositiveButton("完成", null).show();
+        Ui.dialog(act).setTitle(cast ? "音箱音量" : "音量").setView(wrap).setPositiveButton("完成", null).show();
     }
 }
