@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Subsonic Player — 自托管音乐播放器（Windows / Android 客户端下载）</title>
-<meta name="description" content="Subsonic Player 是面向 NAS 自托管音乐服务的专业播放器：支持 Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / 群晖 AudioStation，提供曲库浏览、智能推荐、10 段 EQ、卡拉OK 滚动歌词、Gapless 无缝播放与淡入淡出，并有 Windows 桌面版与 Android 原生客户端，免费开源（MIT）。">
-<meta name="keywords" content="Subsonic Player,Subsonic 播放器,Navidrome 客户端,Gonic,Jellyfin 音乐,自托管音乐,NAS 音乐播放器,开源音乐播放器,Android 音乐播放器,Windows 音乐播放器,卡拉OK歌词,Gapless 无缝播放,EQ 均衡器">
+<meta name="description" content="Subsonic Player 是面向 NAS 自托管音乐服务的专业播放器：支持 Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / 群晖 AudioStation，提供曲库浏览、智能推荐、10 段 EQ、卡拉OK 滚动歌词、Gapless 无缝播放与淡入淡出；Android 端支持 DLNA 投送，可把音乐直接推到局域网音箱、电视与功放播放，并有 Windows 桌面版与 Android 原生客户端，免费开源（MIT）。">
+<meta name="keywords" content="Subsonic Player,Subsonic 播放器,Navidrome 客户端,Gonic,Jellyfin 音乐,自托管音乐,NAS 音乐播放器,开源音乐播放器,Android 音乐播放器,Windows 音乐播放器,卡拉OK歌词,Gapless 无缝播放,EQ 均衡器,DLNA 推送,DLNA 投送,手机遥控音箱,UPnP 音乐播放器">
 <meta name="author" content="lixscn">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#0e1116">
@@ -21,7 +21,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:title" content="Subsonic Player — 自托管音乐播放器（Windows / Android）">
-<meta property="og:description" content="为 NAS 上的 Subsonic / Navidrome / Gonic / Jellyfin 打造的专业播放器：曲库浏览、智能推荐、10 段 EQ、卡拉OK 歌词、Gapless 无缝播放。免费开源，提供 Windows 与 Android 客户端。">
+<meta property="og:description" content="为 NAS 上的 Subsonic / Navidrome / Gonic / Jellyfin 打造的专业播放器：曲库浏览、智能推荐、10 段 EQ、卡拉OK 歌词、Gapless 无缝播放，Android 端还能 DLNA 投送到音箱与电视。免费开源，提供 Windows 与 Android 客户端。">
 <meta property="og:url" content="https://www.lixs.fun/">
 <meta property="og:image" content="https://www.lixs.fun/assets/og-cover.jpg">
 <meta property="og:image:width" content="1120">
@@ -64,6 +64,7 @@
     "卡拉OK 式滚动歌词（服务端 + LRCLIB + 网易云兜底）",
     "Gapless 无缝播放与 0-15 秒交叉淡入淡出",
     "Android 后台播放与通知栏、锁屏媒体控制",
+    "Android 端 DLNA 投送：发现局域网音箱与电视，手机遥控播放",
     "多服务器配置与内外网地址自动切换"
   ]
 }
@@ -102,6 +103,11 @@
           "@type": "Question",
           "name": "Android 版为什么有些歌放不出来？",
           "acceptedAnswer": { "@type": "Answer", "text": "Android 版内置解码器（BASS 核心 + add-on 插件），支持 mp3 / m4a(AAC) / FLAC / WAV / OGG，以及 DSD(.dsf) / APE / WavPack / Opus —— 服务端不做转码也能直接播放；APE/DSD 这类服务端不返回后缀的文件也能自动识别。" }
+        },
+        {
+          "@type": "Question",
+          "name": "Android 版能推送到音箱或电视播放吗？",
+          "acceptedAnswer": { "@type": "Answer", "text": "可以。Android 版内置 DLNA / UPnP 投送：自动发现同一局域网里的音箱、电视与功放，选定后由那台设备直接从你的音乐服务器拉流播放，手机当遥控器 —— 支持播放 / 暂停 / 上一首 / 下一首 / 拖动进度 / 调节音量，一首放完自动续播下一首；断开连接或切回本机播放时，声音自动交还手机。" }
         }
       ]
     }
@@ -139,7 +145,7 @@
         <h1>Subsonic Player<br><span class="grad">桌面与手机上的专业音乐播放器</span></h1>
         <p class="lead">
           连接你自己的音乐服务器（<strong>Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / 群晖 AudioStation</strong>），
-          享受 Roon 风格的浏览体验、10 段 EQ、卡拉OK 滚动歌词、Gapless 无缝播放。桌面版与 Android 原生客户端，<strong>免费开源</strong>。
+          享受 Roon 风格的浏览体验、10 段 EQ、卡拉OK 滚动歌词、Gapless 无缝播放，Android 端还能 <strong>DLNA 投送</strong>到音箱与电视。桌面版与 Android 原生客户端，<strong>免费开源</strong>。
         </p>
         <div class="cta-row">
           <a class="btn btn-primary" href="/downloads/SubsonicPlayer-win-x64.zip" download>
@@ -194,7 +200,7 @@
         </article>
         <article class="card">
           <h3>Android 原生客户端</h3>
-          <p>纯原生实现，<strong>后台播放 + 通知栏与锁屏控制 + 耳机按键 + 音频焦点</strong>；底部导航与全屏播放页按手机竖屏重做，支持播放位置记忆与断点续播。</p>
+          <p>纯原生实现，<strong>后台播放 + 通知栏与锁屏控制 + 耳机按键 + 音频焦点</strong>；底部导航与全屏播放页按手机竖屏重做，支持播放位置记忆与断点续播。还内置 <strong>DLNA / UPnP 投送</strong>：把音乐推到局域网音箱、电视和功放，手机当遥控器。</p>
         </article>
         <article class="card">
           <h3>主题与个性化</h3>
@@ -261,6 +267,7 @@
           <p class="dl-ver">v0.1.0 · minSdk 29（Android 10+）</p>
           <ul>
             <li>后台播放 + 通知栏 / 锁屏控制，耳机按键与音频焦点完整支持</li>
+            <li>DLNA / UPnP 投送：局域网音箱、电视、功放直接播放，手机当遥控器</li>
             <li>原生界面：底部导航、迷你播放条、全屏播放页（歌词 / 队列）</li>
             <li>支持内外网双地址，出门自动走域名（HTTPS）</li>
           </ul>
@@ -307,6 +314,9 @@
 
         <dt>Android 版支持哪些音频格式？</dt>
         <dd>内置解码器（BASS 核心 + add-on 插件）：mp3 / m4a(AAC) / FLAC / WAV / OGG，以及 DSD（.dsf）、APE、WavPack、Opus —— 服务端不做转码也能直接播放。服务端对 APE/DSD 这类文件常常不返回后缀，客户端会用 contentType 兜底识别。</dd>
+
+        <dt>Android 版能推送到音箱或电视播放吗？</dt>
+        <dd>可以。Android 版内置 <strong>DLNA / UPnP 投送</strong>：自动发现同一局域网里的音箱、电视与功放，选定后由那台设备直接从你的音乐服务器拉流播放，手机当遥控器 —— 支持播放 / 暂停 / 上一首 / 下一首 / 拖动进度 / 调节音量，一首放完自动续播下一首；断开连接或切回本机播放时，声音自动交还手机。注意音箱需要能访问到你的音乐服务器地址（一般同一局域网即可）。</dd>
 
         <dt>数据会被上传到云端吗？</dt>
         <dd>不会。客户端没有账号体系，所有请求都直接发往你自己的服务器；服务器密码加密保存在本机（Windows DPAPI、Android KeyStore）。</dd>

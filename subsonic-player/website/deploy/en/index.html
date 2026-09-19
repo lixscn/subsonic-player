@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Subsonic Player — Self-hosted Music Player for Windows &amp; Android</title>
-<meta name="description" content="Subsonic Player is a professional client for your self-hosted music server: Subsonic / OpenSubsonic (Navidrome, Gonic, Jellyfin), Emby, Plex and Synology AudioStation. Library browsing, smart recommendations, 10-band EQ, karaoke lyrics, gapless playback with crossfade. Free and open source (MIT), with Windows desktop and native Android apps.">
-<meta name="keywords" content="Subsonic Player,Subsonic client,Navidrome client,Gonic,Jellyfin music,self-hosted music,NAS music player,open source music player,Android music player,Windows music player,gapless playback,karaoke lyrics,EQ equalizer">
+<meta name="description" content="Subsonic Player is a professional client for your self-hosted music server: Subsonic / OpenSubsonic (Navidrome, Gonic, Jellyfin), Emby, Plex and Synology AudioStation. Library browsing, smart recommendations, 10-band EQ, karaoke lyrics, gapless playback with crossfade, and DLNA casting from the Android app to speakers, TVs and AV receivers. Free and open source (MIT), with Windows desktop and native Android apps.">
+<meta name="keywords" content="Subsonic Player,Subsonic client,Navidrome client,Gonic,Jellyfin music,self-hosted music,NAS music player,open source music player,Android music player,Windows music player,gapless playback,karaoke lyrics,EQ equalizer,DLNA casting,DLNA renderer,UPnP music player,cast music to speaker">
 <meta name="author" content="lixscn">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#0e1116">
@@ -20,7 +20,7 @@
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="zh_CN">
 <meta property="og:title" content="Subsonic Player — Self-hosted Music Player for Windows &amp; Android">
-<meta property="og:description" content="A professional client for Subsonic / Navidrome / Gonic / Jellyfin on your NAS: library browsing, smart recommendations, 10-band EQ, karaoke lyrics, gapless playback. Free and open source.">
+<meta property="og:description" content="A professional client for Subsonic / Navidrome / Gonic / Jellyfin on your NAS: library browsing, smart recommendations, 10-band EQ, karaoke lyrics, gapless playback, plus DLNA casting to speakers and TVs from the Android app. Free and open source.">
 <meta property="og:url" content="https://www.lixs.fun/en/">
 <meta property="og:image" content="https://www.lixs.fun/assets/og-cover.jpg">
 <meta property="og:image:width" content="1120">
@@ -61,6 +61,7 @@
     "Karaoke-style scrolling lyrics (server + LRCLIB + NetEase fallback)",
     "Gapless playback with 0-15s crossfade",
     "Android background playback with notification and lock-screen controls",
+    "DLNA casting from Android: discover speakers and TVs on your LAN and control them from your phone",
     "Multiple servers with automatic LAN / WAN address switching"
   ]
 }
@@ -98,6 +99,11 @@
           "@type": "Question",
           "name": "Which audio formats does the Android app support?",
           "acceptedAnswer": { "@type": "Answer", "text": "The Android app bundles its own decoders (BASS core + add-ons): mp3, m4a (AAC), FLAC, WAV and OGG, plus DSD (.dsf), APE, WavPack and Opus — no server-side transcoding needed. When the server omits the file suffix for APE/DSD, the client falls back to the MIME type to identify the format." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can the Android app cast to a speaker or TV?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The Android app has built-in DLNA / UPnP casting: it discovers speakers, TVs and AV receivers on your LAN, and the selected device streams the track straight from your music server while your phone acts as the remote — play / pause, previous / next, seek and volume, with automatic advance to the next track. When you disconnect or switch back to the phone, audio returns to the phone automatically." }
         }
       ]
     }
@@ -134,7 +140,8 @@
         <h1>Subsonic Player<br><span class="grad">A pro-grade player for desktop and mobile</span></h1>
         <p class="lead">
           Connect your own music server (<strong>Subsonic / Navidrome / Gonic / Jellyfin / Emby / Plex / Synology AudioStation</strong>)
-          and enjoy a Roon-style browsing experience, a 10-band EQ, karaoke-scrolling lyrics and gapless playback.
+          and enjoy a Roon-style browsing experience, a 10-band EQ, karaoke-scrolling lyrics and gapless playback —
+          the Android app can even <strong>cast via DLNA</strong> to your speakers and TV.
           Desktop and native Android apps, <strong>free and open source</strong>.
         </p>
         <div class="cta-row">
@@ -189,7 +196,7 @@
         </article>
         <article class="card">
           <h3>Native Android app</h3>
-          <p>A fully native client with <strong>background playback, notification and lock-screen controls, headset buttons and proper audio focus</strong>. Bottom navigation and a full-screen player rebuilt for portrait phones, with resume-where-you-left-off.</p>
+          <p>A fully native client with <strong>background playback, notification and lock-screen controls, headset buttons and proper audio focus</strong>. Bottom navigation and a full-screen player rebuilt for portrait phones, with resume-where-you-left-off. It also has built-in <strong>DLNA / UPnP casting</strong>: push the music to speakers, TVs and AV receivers on your LAN and use your phone as the remote.</p>
         </article>
         <article class="card">
           <h3>Themes</h3>
@@ -254,6 +261,7 @@
           <p class="dl-ver">v0.1.0 · minSdk 29 (Android 10+)</p>
           <ul>
             <li>Background playback, notification and lock-screen controls, headset buttons and audio focus</li>
+            <li>DLNA / UPnP casting: play on LAN speakers, TVs and AV receivers with your phone as the remote</li>
             <li>Native UI: bottom navigation, mini player, full-screen player with lyrics and queue</li>
             <li>Separate LAN and WAN addresses — switch to your HTTPS domain automatically when away</li>
           </ul>
@@ -298,6 +306,9 @@
 
         <dt>Which audio formats does the Android app support?</dt>
         <dd>Bundled decoders (BASS core + add-ons): mp3, m4a (AAC), FLAC, WAV, OGG, plus DSD (.dsf), APE, WavPack and Opus — playable even when the server does not transcode. Servers often omit the file suffix for APE/DSD files; the client falls back to the MIME type.</dd>
+
+        <dt>Can the Android app cast to a speaker or TV?</dt>
+        <dd>Yes. The Android app has built-in <strong>DLNA / UPnP casting</strong>: it discovers speakers, TVs and AV receivers on your LAN, and the device you pick streams the track straight from your music server while your phone acts as the remote — play / pause, previous / next, seek and volume, with automatic advance to the next track. When you disconnect or switch back to the phone, audio returns to the phone automatically. The renderer needs to be able to reach your music server address (usually the same LAN is enough).</dd>
 
         <dt>Is my data uploaded anywhere?</dt>
         <dd>No. There is no account system: every request goes straight to your own server, and server passwords are encrypted on-device (Windows DPAPI, Android KeyStore).</dd>
