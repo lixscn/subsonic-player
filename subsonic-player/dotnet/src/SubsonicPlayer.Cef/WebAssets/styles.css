@@ -51,16 +51,6 @@
        浅色主题必须设成 none —— 它靠更实的白面板保证深色字，再压亮度就会变成"暗哑无光"。 */
     --content-filter: brightness(0.80) saturate(1.05);
     --blur: blur(24px);
-    /* 流光（极光光斑 + 斜向扫光）的三束光色 / 强度 / 混合方式。
-       每个主题各给一套：深色主题用 screen 提亮，月光白必须换成 soft-light，
-       否则 screen 在浅底上会直接爆成白斑。 */
-    --aurora-a: #2DD4BF;
-    --aurora-b: #6366F1;
-    --aurora-c: #22D3EE;
-    --aurora-alpha: 0.30;
-    --aurora-sweep: rgba(226, 255, 250, 0.55);
-    --aurora-sweep-alpha: 0.5;
-    --aurora-blend: screen;
 }
 
 /* 主题预设。:root 即「深邃黑」(dark, 默认)。其余主题按 data-theme 切换。 */
@@ -98,15 +88,6 @@ html[data-theme="light"] {
     --text-shadow: 0 0 3px rgba(255, 255, 255, 0.95), 0 1px 2px rgba(255, 255, 255, 0.85);
     --list-veil: rgba(255, 255, 255, 0.62);       /* 白色整块：深色字压在上面 */
     --content-filter: none;                       /* 不压亮度（压了就发闷） */
-    /* 月光白是浅底：screen 会把光斑爆成白斑，改用 soft-light 且强度减半。
-       光色也换成偏深的同色系，否则在浅灰上根本看不见。 */
-    --aurora-a: #0FAE85;
-    --aurora-b: #6366F1;
-    --aurora-c: #0E7490;
-    --aurora-alpha: 0.16;
-    --aurora-sweep: rgba(255, 255, 255, 0.75);
-    --aurora-sweep-alpha: 0.35;
-    --aurora-blend: soft-light;
     background: var(--bg-app);   /* 浅色下 html 背景也纯色，避免右侧透出渐变阴影 */
 }
 html[data-theme="forest"] { /* 森林绿 —— 墨色偏绿，强调色是明确的草绿（和深邃黑的冷青拉开） */
@@ -132,13 +113,6 @@ html[data-theme="forest"] { /* 森林绿 —— 墨色偏绿，强调色是明�
     --list-veil: rgba(12, 24, 16, 0.42);
     --text-shadow: 0 0 3px rgba(0, 0, 0, 0.85), 0 1px 2px rgba(0, 0, 0, 0.90);
     --content-filter: brightness(0.80) saturate(1.05);
-    --aurora-a: #4ADE80;
-    --aurora-b: #22D3EE;
-    --aurora-c: #A3E635;
-    --aurora-alpha: 0.30;
-    --aurora-sweep: rgba(220, 255, 228, 0.5);
-    --aurora-sweep-alpha: 0.45;
-    --aurora-blend: screen;
 }
 html[data-theme="midnight"] { /* 午夜蓝 */
     --bg-app: #070A16;
@@ -163,13 +137,6 @@ html[data-theme="midnight"] { /* 午夜蓝 */
     --list-veil: rgba(12, 16, 36, 0.42);
     --text-shadow: 0 0 3px rgba(0, 0, 0, 0.85), 0 1px 2px rgba(0, 0, 0, 0.90);
     --content-filter: brightness(0.80) saturate(1.05);
-    --aurora-a: #60A5FA;
-    --aurora-b: #8B5CF6;
-    --aurora-c: #22D3EE;
-    --aurora-alpha: 0.32;
-    --aurora-sweep: rgba(226, 238, 255, 0.5);
-    --aurora-sweep-alpha: 0.45;
-    --aurora-blend: screen;
 }
 html[data-theme="sunset"] { /* 落日橙 —— 墨色偏暖棕 */
     --bg-app: #140D08;
@@ -194,13 +161,6 @@ html[data-theme="sunset"] { /* 落日橙 —— 墨色偏暖棕 */
     --list-veil: rgba(30, 20, 12, 0.42);
     --text-shadow: 0 0 3px rgba(0, 0, 0, 0.85), 0 1px 2px rgba(0, 0, 0, 0.90);
     --content-filter: brightness(0.80) saturate(1.05);
-    --aurora-a: #FB923C;
-    --aurora-b: #F43F5E;
-    --aurora-c: #FACC15;
-    --aurora-alpha: 0.30;
-    --aurora-sweep: rgba(255, 240, 220, 0.5);
-    --aurora-sweep-alpha: 0.45;
-    --aurora-blend: screen;
 }
 html[data-theme="rose"] { /* 玫瑰紫 —— 墨色偏紫 */
     --bg-app: #120A12;
@@ -225,13 +185,6 @@ html[data-theme="rose"] { /* 玫瑰紫 —— 墨色偏紫 */
     --list-veil: rgba(28, 14, 26, 0.42);
     --text-shadow: 0 0 3px rgba(0, 0, 0, 0.85), 0 1px 2px rgba(0, 0, 0, 0.90);
     --content-filter: brightness(0.80) saturate(1.05);
-    --aurora-a: #F472B6;
-    --aurora-b: #A855F7;
-    --aurora-c: #FB7185;
-    --aurora-alpha: 0.30;
-    --aurora-sweep: rgba(255, 232, 246, 0.5);
-    --aurora-sweep-alpha: 0.45;
-    --aurora-blend: screen;
 }
 
 /* ============================================================================
@@ -300,120 +253,6 @@ html[data-theme="light"] { background: var(--bg-app); }
         var(--bg-scrim-1) 24%,
         var(--bg-scrim-1) 68%,
         var(--bg-scrim-2) 100%);
-}
-
-/* ============================================================================
-   流光（极光光斑 + 斜向扫光）—— 叠在封面底图之上、压暗层之下。
-
-   ⚠️ 性能前提：客户端是 **CEF 离屏渲染（OSR，默认 30fps）**，页面只要在动就一直
-   重绘、一直占 CPU。所以这里**只动 `transform` 和 `opacity`** —— 图层能被一次性
-   raster 之后反复复用。**绝不要改成动 `filter: blur()` 或 `background-position`**：
-   那等于每一帧重新栅格化一整屏模糊，CPU 直接起飞。
-   同理，`transform` 里**只用 translate3d，不用 scale** —— 缩放会让图层按新尺寸重新
-   raster，纯平移不会。元素本身已经放大到 inset:-30%，平移不会露出边缘。
-
-   暂停策略见文件末尾「流光开关」：播放时流动；暂停 / 窗口隐藏 / 系统开了
-   "减少动态效果" 时 `animation-play-state: paused`。
-   注意：把动画**调慢并不省 CPU**（重绘频率由渲染帧率决定，与时长无关），
-   只有真正 pause 才省。所以暂停态是彻底停住，而不是"更慢地动"。
-   ============================================================================ */
-.bg-aurora,
-.bg-aurora::before,
-.bg-aurora::after,
-.bg-sweep {
-    position: absolute;
-    pointer-events: none;
-    will-change: transform, opacity;
-}
-
-/* 三束光斑：各自一块大尺寸柔和径向渐变，独立周期与路径地缓慢漂移。
-   用 3 个图层（元素 + 两个伪元素）而不是一个背景里的 3 个 gradient，
-   是因为同一元素上的多段渐变没法各自独立运动。 */
-.bg-aurora {
-    inset: -30%;
-    mix-blend-mode: var(--aurora-blend, screen);
-    opacity: var(--aurora-alpha, 0.30);
-    background: radial-gradient(38% 44% at 24% 32%, var(--aurora-a) 0%, transparent 70%);
-    animation: aurora-a 84s ease-in-out infinite;
-}
-.bg-aurora::before,
-.bg-aurora::after {
-    content: '';
-    inset: 0;
-}
-.bg-aurora::before {
-    background: radial-gradient(34% 40% at 76% 28%, var(--aurora-b) 0%, transparent 68%);
-    animation: aurora-b 67s ease-in-out infinite;
-}
-.bg-aurora::after {
-    background: radial-gradient(32% 38% at 58% 78%, var(--aurora-c) 0%, transparent 66%);
-    animation: aurora-c 101s ease-in-out infinite;
-}
-
-/* 斜向扫光：一条很宽的线性高光，每 ~13s 从左下掠过右上（约 5s 走完，其余时间隐形）。 */
-.bg-sweep {
-    inset: -40% -70%;
-    background: linear-gradient(104deg,
-        transparent 41%,
-        var(--aurora-sweep) 50%,
-        transparent 59%);
-    mix-blend-mode: soft-light;
-    opacity: 0;
-    animation: aurora-sweep 13s linear infinite;
-}
-
-/* 纯平移 + 透明度：可复用已 raster 的图层，不触发重新栅格化 */
-@keyframes aurora-a {
-    0%   { transform: translate3d(-3%, -2%, 0); }
-    25%  { transform: translate3d(5%, 3%, 0); }
-    50%  { transform: translate3d(7%, -4%, 0); }
-    75%  { transform: translate3d(-2%, 5%, 0); }
-    100% { transform: translate3d(-3%, -2%, 0); }
-}
-@keyframes aurora-b {
-    0%   { transform: translate3d(4%, 2%, 0); }
-    33%  { transform: translate3d(-6%, 5%, 0); }
-    66%  { transform: translate3d(-1%, -5%, 0); }
-    100% { transform: translate3d(4%, 2%, 0); }
-}
-@keyframes aurora-c {
-    0%   { transform: translate3d(2%, 5%, 0); }
-    40%  { transform: translate3d(-5%, -3%, 0); }
-    70%  { transform: translate3d(6%, 1%, 0); }
-    100% { transform: translate3d(2%, 5%, 0); }
-}
-@keyframes aurora-sweep {
-    0%, 58%  { transform: translate3d(-52%, 0, 0); opacity: 0; }
-    64%      { opacity: var(--aurora-sweep-alpha, 0.45); }
-    86%      { opacity: var(--aurora-sweep-alpha, 0.45); }
-    100%     { transform: translate3d(52%, 0, 0); opacity: 0; }
-}
-
-/* 流光开关：只有播放中才流动。暂停时彻底停住（不是变慢——变慢不省 CPU）。 */
-body:not(.is-playing) .bg-aurora,
-body:not(.is-playing) .bg-aurora::before,
-body:not(.is-playing) .bg-aurora::after,
-body:not(.is-playing) .bg-sweep,
-html.window-hidden .bg-aurora,
-html.window-hidden .bg-aurora::before,
-html.window-hidden .bg-aurora::after,
-html.window-hidden .bg-sweep {
-    animation-play-state: paused;
-}
-
-/* 沉浸式全屏播放页：光斑减弱，别抢封面的戏 */
-body.immersive .bg-aurora { opacity: calc(var(--aurora-alpha, 0.30) * 0.5); }
-body.immersive .bg-sweep { opacity: 0; animation: none; }
-
-/* 系统「减少动态效果」：光斑保留静态构图，但完全不动 */
-@media (prefers-reduced-motion: reduce) {
-    .bg-aurora,
-    .bg-aurora::before,
-    .bg-aurora::after,
-    .bg-sweep {
-        animation: none !important;
-    }
-    .bg-sweep { opacity: 0 !important; }
 }
 
 /* 底图清晰之后，**直接浮在底图上的文字**（列表行、卡片标题、区块标题）需要一点投影：
