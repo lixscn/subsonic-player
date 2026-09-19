@@ -126,6 +126,12 @@ window.addEventListener('bridgeEvent', e => {
     if (event) StateBridge.emit(event, payload);
 });
 
+// 窗口被隐藏 / 最小化到托盘时停掉背景流光：CEF 是离屏渲染，页面一直在动就一直重绘，
+// 看不见的时候没有理由继续烧 CPU。CSS 侧见 styles.css「流光开关」。
+document.addEventListener('visibilitychange', () => {
+    document.documentElement.classList.toggle('window-hidden', document.hidden);
+});
+
 // ============ 导航 ============
 // group：分组标题（数组里按顺序插入小标题，顺序与原来保持一致，不改变使用习惯）
 const NAV_ITEMS = [
@@ -1215,6 +1221,9 @@ function updatePlayerBar(s) {
     // 播放/暂停图标切换（SVG use，无闪烁）
     const playUse = document.querySelector('#btnPlayIcon use');
     if (playUse) playUse.setAttribute('href', s.isPlaying ? '#i-pause' : '#i-play');
+    // 背景流光只在播放中流动（CSS 靠 body.is-playing 控制 animation-play-state）；
+    // toggle 传 force，值没变时不会改 DOM，500ms 调一次也无成本。
+    document.body.classList.toggle('is-playing', !!s.isPlaying);
     // 红心切换
     playerBar.fav.classList.toggle('active', !!s.isFavorite);
     const favUse = document.querySelector('#pbFavIcon use');

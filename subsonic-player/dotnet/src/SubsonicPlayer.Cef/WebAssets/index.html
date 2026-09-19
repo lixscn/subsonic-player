@@ -10,6 +10,11 @@
     <!-- 动态封面底图：当前曲目封面模糊放大 + 深色遮罩（Spotify/网易云 风格） -->
     <div class="bg-layer" id="bgLayer">
         <img class="bg-img" id="bgImg" alt="">
+        <!-- 流光：三束极光光斑缓慢漂移 + 每 ~13s 一道斜向扫光。
+             只动 transform/opacity（CEF 离屏渲染，动 filter/blur 会每帧重新栅格化全屏）；
+             仅播放中流动，暂停/窗口隐藏/系统减少动效时静止（见 styles.css「流光开关」）。 -->
+        <div class="bg-aurora" aria-hidden="true"></div>
+        <div class="bg-sweep" aria-hidden="true"></div>
     </div>
 
     <!-- 断线重连横幅：连接丢失时显示，恢复后自动隐藏并刷新当前页 -->
