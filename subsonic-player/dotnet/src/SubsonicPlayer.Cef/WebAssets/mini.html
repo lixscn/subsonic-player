@@ -1,62 +1,178 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html,body { width:100%; height:100%; overflow:hidden; background:#17171B; color:#F5F5F7;
-  font-family:"Inter","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
-  -webkit-user-select:none; user-select:none; }
-body { display:flex; flex-direction:column; height:100vh; }
+/* ============================================================================
+   迷你播放器（300x84 无边框浮窗）
+   设计要点：
+   1) 底图用**当前封面模糊铺满 + 主题色暗角**，和主窗口同一套语言 ——
+      静态模糊，没有动画，所以不额外增加离屏渲染负担。
+   2) 颜色全部走变量，跟主程序的主题（深邃黑/月光白/森林绿/午夜蓝/落日橙/玫瑰紫）
+      一起变；不是写死的灰。
+   3) 层次：封面 48 → 歌名 13/600 → 歌手与时间 11 淡色 → 底部 3px 进度（accent 填充）。
+      窗口按钮（✕/⤢）默认透明，鼠标移入才浮出来，静止时不占视觉。
+   ============================================================================ */
+:root {
+    --accent: #2DD4BF;
+    --text: #F5F5F7;
+    --text-dim: #DCDCE4;
+    --muted: #A8AAB4;
+    --scrim: rgba(10, 11, 14, 0.62);
+    --scrim-2: rgba(10, 11, 14, 0.30);
+    --hover: rgba(255, 255, 255, 0.12);
+    --edge: rgba(255, 255, 255, 0.10);
+    --track: rgba(0, 0, 0, 0.42);                   /* 进度槽压暗：否则 accent 填充压在彩色底图上分不出来 */
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+html[data-theme="light"] {
+    --accent: #0FAE85; --text: #14161C; --text-dim: #33363E; --muted: #6A6E78;
+    --scrim: rgba(246, 248, 252, 0.78); --scrim-2: rgba(246, 248, 252, 0.52);
+    --hover: rgba(16, 18, 24, 0.10); --edge: rgba(16, 18, 24, 0.12);
+    --track: rgba(16, 18, 24, 0.22); --shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+html[data-theme="forest"]  { --accent: #4ADE80; }
+html[data-theme="midnight"]{ --accent: #60A5FA; }
+html[data-theme="sunset"]  { --accent: #FB923C; }
+html[data-theme="rose"]    { --accent: #F472B6; }
 
-/* 顶部拖拽条 */
-.mp-top { display:flex; align-items:center; padding:5px 8px; gap:6px; -webkit-app-region:no-drag; }
-.mp-title { flex:1; text-align:center; font-size:11.5px; color:#A1A1AA; }
-.mp-btn { border:none; background:transparent; color:#A1A1AA; cursor:pointer;
-  width:22px; height:22px; font-size:13px; line-height:1; border-radius:4px; -webkit-app-region:no-drag; }
-.mp-btn:hover { color:#F5F5F7; background:#26262E; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #101114; color: var(--text);
+    font-family: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    -webkit-font-smoothing: antialiased;
+}
+html[data-theme="light"] body { background: #ECEFF4; }
+body { display: flex; flex-direction: column; position: relative; cursor: default; }
 
-/* 主体：封套 + 信息 + 控制 */
-.mp-body { flex:1; display:flex; align-items:center; gap:12px; padding:2px 12px 10px; min-height:0; }
-.mp-cover { width:56px; height:56px; border-radius:8px; object-fit:cover; background:#1E1E24; flex:none; }
-.mp-cover-fb { width:56px; height:56px; border-radius:8px; background:#1E1E24; flex:none;
-  display:flex; align-items:center; justify-content:center; color:#6B6B76; }
-.mp-cover-fb svg { fill:currentColor; }
-.mp-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
-.mp-song { font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.mp-artist { font-size:11px; color:#A1A1AA; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.mp-controls { display:flex; align-items:center; gap:3px; -webkit-app-region:no-drag; }
-.mp-ctl { border:none; background:transparent; color:#F5F5F7; cursor:pointer;
-  width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px; }
-.mp-ctl:hover { background:#26262E; }
-.mp-ctl svg { fill:currentColor; }
-.mp-ctl.main svg { width:20px; height:20px; }
-.mp-prog { flex:1; height:3px; background:#2E2E38; border-radius:2px; position:relative; cursor:pointer; }
-.mp-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#22C55E; border-radius:2px; }
-.mp-time { font-size:10px; color:#6B6B76; min-width:34px; text-align:right; font-variant-numeric:tabular-nums; }
+/* ---- 底图：封面模糊铺满 + 暗角（静态，无动画）---- */
+.mp-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.mp-bg img {
+    width: 100%; height: 100%; object-fit: cover;
+    transform: scale(1.25);                       /* 放大，模糊后不露边 */
+    filter: blur(22px) saturate(1.5);
+}
+.mp-bg::after {                                    /* 两侧重、中间轻：字压上去也读得清 */
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--scrim) 0%, var(--scrim-2) 38%, var(--scrim) 100%);
+}
+.mp-bg-empty {                                     /* 没封面时给一块主题色氛围，不是死灰 */
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 140% at 12% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
+                radial-gradient(120% 140% at 88% 90%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%);
+}
+
+/* ---- 主行：封面 | 文字 | 控制 ---- */
+.mp-row {
+    position: relative; z-index: 1; flex: 1;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 12px 9px;                            /* 底部留出进度条 */
+    min-height: 0;
+}
+.mp-art { position: relative; flex: none; width: 48px; height: 48px; }
+.mp-cover {
+    width: 48px; height: 48px; border-radius: 9px; object-fit: cover; display: block;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--edge);
+    background: var(--hover);
+}
+.mp-cover-fb {
+    position: absolute; inset: 0; border-radius: 9px; display: flex; align-items: center;
+    justify-content: center; color: var(--muted);
+    background: var(--hover); box-shadow: 0 0 0 1px var(--edge);
+}
+.mp-cover-fb svg { fill: currentColor; }
+.mp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mp-song {
+    font-size: 13px; font-weight: 600; letter-spacing: .1px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: var(--shadow);
+}
+.mp-artist {
+    font-size: 11px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: var(--shadow);
+}
+.mp-time {
+    font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+    letter-spacing: .2px; text-shadow: var(--shadow);
+}
+.mp-time b { color: var(--text-dim); font-weight: 500; }
+
+/* ---- 控制：上一首 / 播放（主按钮带主题色）/ 下一首 ---- */
+.mp-controls { flex: none; display: flex; align-items: center; gap: 2px; }
+.mp-ctl {
+    border: 0; background: transparent; color: var(--text-dim); cursor: pointer;
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; transition: background .12s ease, color .12s ease;
+}
+.mp-ctl:hover { background: var(--hover); color: var(--text); }
+.mp-ctl svg { fill: currentColor; display: block; }
+.mp-ctl.main {
+    width: 32px; height: 32px; margin: 0 2px;
+    background: var(--accent); color: #08110F;
+}
+.mp-ctl.main:hover { filter: brightness(1.10); }
+html[data-theme="light"] .mp-ctl.main { color: #FFFFFF; }
+
+/* ---- 进度：贴底一条细线，命中区加高到 12px 好点 ---- */
+.mp-prog {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 12px;
+    display: flex; align-items: flex-end; cursor: pointer; z-index: 2;
+}
+.mp-track { width: 100%; height: 3px; background: var(--track); overflow: hidden; }
+.mp-fill {
+    height: 100%; width: 0; background: var(--accent);
+    transition: width .18s linear;                  /* 500ms 推一次，插值一下不跳 */
+}
+.mp-prog:hover .mp-track { height: 5px; }
+.mp-prog:hover .mp-fill { box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent); }
+
+/* ---- 窗口按钮：静止时半透明（否则用户找不到），移入变实 ---- */
+.mp-win { position: absolute; top: 5px; right: 6px; z-index: 3; display: flex; gap: 2px; }
+.mp-win button {
+    border: 0; width: 17px; height: 17px; border-radius: 50%; cursor: pointer;
+    background: rgba(120, 120, 130, 0.30); color: var(--text);
+    font-size: 10px; line-height: 1; display: flex; align-items: center; justify-content: center;
+    opacity: 0.34; transition: opacity .14s ease, background .12s ease;
+}
+body:hover .mp-win button { opacity: 1; }
+.mp-win button:hover { background: rgba(120, 120, 130, 0.58); }
 </style>
 </head>
 <body>
-  <div class="mp-top" id="mpTop">
-    <button class="mp-btn" id="mpMin" title="关闭迷你播放器">✕</button>
-    <span class="mp-title" id="mpTitle">迷你播放器</span>
-    <button class="mp-btn" id="mpExpand" title="展开主窗口">⤢</button>
+  <!-- 底图：封面模糊铺满 -->
+  <div class="mp-bg" id="mpBg">
+    <div class="mp-bg-empty"></div>
   </div>
-  <div class="mp-body">
-    <img class="mp-cover" id="mpCover" style="display:none" alt="">
-    <div class="mp-cover-fb" id="mpCoverFb"><svg width="22" height="22"><use href="#i-album"/></svg></div>
-    <div class="mp-main">
+
+  <!-- 窗口按钮：默认透明，鼠标移入才出现 -->
+  <div class="mp-win">
+    <button id="mpExpand" title="展开主窗口">⤢</button>
+    <button id="mpMin" title="关闭迷你播放器">✕</button>
+  </div>
+
+  <div class="mp-row" id="mpRow">
+    <div class="mp-art">
+      <img class="mp-cover" id="mpCover" alt="" style="display:none">
+      <div class="mp-cover-fb" id="mpCoverFb"><svg width="20" height="20"><use href="#i-album"/></svg></div>
+    </div>
+    <div class="mp-text">
       <div class="mp-song" id="mpSong">未在播放</div>
       <div class="mp-artist" id="mpArtist"></div>
-      <div class="mp-controls">
-        <button class="mp-ctl" id="mpPrev" title="上一首"><svg width="16" height="16"><use href="#i-prev"/></svg></button>
-        <button class="mp-ctl main" id="mpPlay" title="播放/暂停"><svg id="mpPlayIcon" width="18" height="18"><use href="#i-play"/></svg></button>
-        <button class="mp-ctl" id="mpNext" title="下一首"><svg width="16" height="16"><use href="#i-next"/></svg></button>
-        <div class="mp-prog" id="mpProg"><div class="mp-fill" id="mpFill"></div></div>
-        <span class="mp-time" id="mpTime">0:00</span>
-      </div>
+      <div class="mp-time" id="mpTime"><b>0:00</b> / 0:00</div>
+    </div>
+    <div class="mp-controls">
+      <button class="mp-ctl" id="mpPrev" title="上一首"><svg width="15" height="15"><use href="#i-prev"/></svg></button>
+      <button class="mp-ctl main" id="mpPlay" title="播放/暂停"><svg id="mpPlayIcon" width="15" height="15"><use href="#i-play"/></svg></button>
+      <button class="mp-ctl" id="mpNext" title="下一首"><svg width="15" height="15"><use href="#i-next"/></svg></button>
     </div>
   </div>
+
+  <!-- 进度：整宽贴底 -->
+  <div class="mp-prog" id="mpProg"><div class="mp-track"><div class="mp-fill" id="mpFill"></div></div></div>
+
   <svg width="0" height="0" style="position:absolute">
     <defs>
       <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
@@ -69,24 +185,40 @@ body { display:flex; flex-direction:column; height:100vh; }
 <script>
 const $ = id => document.getElementById(id);
 function fmt(t){ if(!t||t<0) return '0:00'; const s=Math.floor(t%60), m=Math.floor(t/60); return m+':'+String(s).padStart(2,'0'); }
+
+let _bgUrl = null;
+function setCover(url){
+  if (url === _bgUrl) return;                        // 同一张不重复加载，避免闪烁
+  _bgUrl = url;
+  const old = $('mpBg').querySelector('img');
+  if (url) {
+    const img = document.createElement('img');
+    img.onload = () => { if (old && old.parentNode) old.parentNode.removeChild(old); };
+    img.onerror = () => { if (img.parentNode) img.parentNode.removeChild(img); };
+    img.src = url;
+    $('mpBg').appendChild(img);
+    $('mpCover').src = url; $('mpCover').style.display = '';
+    $('mpCoverFb').style.display = 'none';
+  } else {
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    $('mpCover').removeAttribute('src'); $('mpCover').style.display = 'none';
+    $('mpCoverFb').style.display = 'flex';
+  }
+}
+
 function upd(s){
   if(!s) return;
+  if (s.theme) document.documentElement.setAttribute('data-theme', s.theme);
   $('mpSong').textContent = s.currentTitle || '未在播放';
   $('mpArtist').textContent = s.currentArtist || '';
   const pu = document.querySelector('#mpPlayIcon use');
   if (pu) pu.setAttribute('href', s.isPlaying ? '#i-pause' : '#i-play');
+  $('mpTime').innerHTML = '<b>' + fmt(s.positionSeconds) + '</b> / ' + fmt(s.durationSeconds);
   const pct = s.durationSeconds > 0 ? Math.min(100, (s.positionSeconds / s.durationSeconds) * 100) : 0;
   $('mpFill').style.width = pct + '%';
-  $('mpTime').textContent = fmt(s.positionSeconds);
-  if (s.coverUrl) {
-    $('mpCover').src = s.coverUrl;
-    $('mpCover').style.display = '';
-    $('mpCoverFb').style.display = 'none';
-  } else {
-    $('mpCover').style.display = 'none';
-    $('mpCoverFb').style.display = 'flex';
-  }
+  setCover(s.coverUrl || null);
 }
+
 window.addEventListener('bridgeEvent', e => {
   const d = e.detail || {};
   if (d.event === 'playback') upd(d.payload);
@@ -95,18 +227,27 @@ window.addEventListener('bridgeEvent', e => {
 $('mpPlay').addEventListener('click', () => window.bridge.togglePlay());
 $('mpPrev').addEventListener('click', () => window.bridge.previous());
 $('mpNext').addEventListener('click', () => window.bridge.next());
-$('mpProg').addEventListener('click', e => {
-  const r = $('mpProg').getBoundingClientRect();
-  window.bridge.seek((e.clientX - r.left) / r.width);
-});
 $('mpMin').addEventListener('click', () => window.bridge.closeMini());
 $('mpExpand').addEventListener('click', () => window.bridge.closeMini());
-// 顶部拖拽条：mousedown 交给 C# 窗口拖动（Win32 / BeginMoveDrag）
-$('mpTop').addEventListener('mousedown', e => {
+
+// 进度条：按下即可拖动定位
+let _seeking = false;
+function seekAt(clientX){
+  const r = $('mpProg').getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  $('mpFill').style.width = (ratio * 100) + '%';
+  window.bridge.seek(ratio);
+}
+$('mpProg').addEventListener('mousedown', e => { _seeking = true; seekAt(e.clientX); e.stopPropagation(); });
+window.addEventListener('mousemove', e => { if (_seeking) seekAt(e.clientX); });
+window.addEventListener('mouseup', () => { _seeking = false; });
+
+// 整块都可拖动窗口（按钮与进度条除外）
+$('mpRow').addEventListener('mousedown', e => {
   if (e.target.closest('button')) return;
   if (e.button === 0) window.bridge.startWindowDrag();
 });
-// 拉起初始状态（避免状态推送早于监听注册而丢失）
+
 window.bridge.getState().then(upd).catch(() => {});
 </script>
 </body>

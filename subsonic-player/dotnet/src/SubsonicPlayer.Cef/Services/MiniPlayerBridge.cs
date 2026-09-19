@@ -66,10 +66,25 @@ public sealed class MiniPlayerBridge : IDisposable
             isPlaying = pb.IsPlaying,
             positionSeconds = pb.PositionSeconds,
             durationSeconds = pb.DurationSeconds,
+            // 迷你窗是独立文档，拿不到主界面的 html[data-theme]，所以主题要随状态一起下发
+            theme = AppServices.Settings.Settings.ThemeId,
         };
     }
 
-    private void PushPlayback() => Push("playback", Snapshot());
+    private string? _appliedTheme;
+
+    private void PushPlayback()
+    {
+        // 窗口底色（无边框窗，深色下不留白边、浅色下不留黑边）
+        var theme = AppServices.Settings.Settings.ThemeId;
+        if (!string.Equals(theme, _appliedTheme, StringComparison.Ordinal))
+        {
+            _appliedTheme = theme;
+            var win = _window;
+            Dispatcher.UIThread.Post(() => win?.ApplyTheme(theme));
+        }
+        Push("playback", Snapshot());
+    }
 
     private void Push(string eventName, object payload)
     {

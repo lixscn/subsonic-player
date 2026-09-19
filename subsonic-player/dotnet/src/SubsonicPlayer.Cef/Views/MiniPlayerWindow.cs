@@ -24,8 +24,16 @@ public sealed class MiniPlayerWindow : Window
         ShowInTaskbar = true;
         Topmost = true;
         SystemDecorations = SystemDecorations.None;
-        Background = new SolidColorBrush(Color.Parse("#17171B"));
+        // 底色由 ApplyTheme 按当前主题设置；先给深色兜底。
+        Background = new SolidColorBrush(Color.Parse("#0A0A0C"));
         Opened += (_, _) => InitCef();
+    }
+
+    /// <summary>无边框窗的底色要跟主题一致，否则浅色主题下四角会露出深色。</summary>
+    public void ApplyTheme(string? themeId)
+    {
+        var light = string.Equals(themeId, "light", StringComparison.OrdinalIgnoreCase);
+        Background = new SolidColorBrush(Color.Parse(light ? "#ECEFF4" : "#0A0A0C"));
     }
 
     private void InitCef()
