@@ -15,6 +15,7 @@ website/
 ├── assets/              # 图片（jpg 为网页用压缩版；desktop-raw.png 是截图原图，不部署）
 ├── downloads/           # 安装包（部署用；apk 由构建脚本产出后同步过来）
 ├── tools/prepare-assets.ps1   # 图片裁剪/缩放/压缩
+├── tools/zip-win-release.ps1  # 把 dotnet 的单文件发布目录打成下载用 zip（条目名用正斜杠、跳过运行缓存）
 ├── tools/audit-credentials.ps1 # 上线前核查：公开文件里是否含账号密码
 └── deploy/              # 实际推送到服务器的文件集 + nginx 配置模板
 ```
@@ -36,6 +37,10 @@ website/
 cd subsonic-player/android && .\build.ps1            # 产出 dist\SubsonicPlayer-0.1.0-release.apk
 Copy-Item dist\SubsonicPlayer-0.1.0-release.apk ..\website\downloads\SubsonicPlayer-android-0.1.0.apk -Force
 
+# 1b) 同步 Windows 包（单文件发布 → 打包；约 275MB，deploy/ 里不含它，由第 3 步单独传）
+cd ..\dotnet && powershell -ExecutionPolicy Bypass -File publish-singlefile.ps1 -TargetDir dist\single-win-x64
+cd ..\website && .\tools\zip-win-release.ps1 -Source ..\dotnet\dist\single-win-x64 -Out downloads\SubsonicPlayer-win-x64.zip
+
 # 2) 上传站点文件
 scp -r ..\website\deploy Aliyun:/tmp/sp-deploy
 ssh Aliyun 'cp -a /tmp/sp-deploy/. /var/www/lixs.fun/ && rm -rf /tmp/sp-deploy'
@@ -43,6 +48,10 @@ ssh Aliyun 'cp -a /tmp/sp-deploy/. /var/www/lixs.fun/ && rm -rf /tmp/sp-deploy'
 # 3) 上传大文件（Windows 包约 275MB）
 scp ..\website\downloads\SubsonicPlayer-win-x64.zip Aliyun:/var/www/lixs.fun/downloads/
 ```
+
+> 注意：`deploy/` 是 `cp -a` 合并覆盖（不是镜像同步），所以第 2 步**不会**删掉服务器上已有的
+> `downloads/SubsonicPlayer-win-x64.zip`；换大文件必须走第 3 步。传完用
+> `ssh Aliyun 'sha256sum /var/www/lixs.fun/downloads/SubsonicPlayer-win-x64.zip'` 与本地比对。
 
 ## 服务器侧要点（改配置前务必先看这段）
 
