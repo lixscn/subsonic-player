@@ -15,6 +15,7 @@
  */
 #include <jni.h>
 #include <string.h>
+#include <android/log.h>
 #include "bass.h"
 
 /* 加了这些 add-on 才有对应格式（缺失时对应函数指针为 0，运行时降级） */
@@ -89,6 +90,11 @@ static void sp_load_plugins(void) {
 
 JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint device, jint freq) {
     (void) env; (void) clazz;
+    /* ★ 设备周期/缓冲必须放在 BASS_Init **之前**（文档：只影响之后再初始化的设备）。
+       DEV_PERIOD 默认 10ms = 每秒唤醒 100 次；20ms 砍半到 50 次（音乐场景延迟 +10ms 无感）。
+       DEV_BUFFER 必须 >= 2×period 且 <50ms —— 到 50ms 会关掉 AAudio fastpath，反而更费电。 */
+    BASS_SetConfig(BASS_CONFIG_DEV_PERIOD, 20);
+    BASS_SetConfig(BASS_CONFIG_DEV_BUFFER, 40);
     /* -1 = 默认设备；BASS_DEVICE_LATENCY 让 BASS 自己算缓冲，移动端更稳 */
     if (!BASS_Init(device, (DWORD) freq, BASS_DEVICE_LATENCY, NULL, NULL)) {
         DWORD err = BASS_ErrorGetCode();
@@ -112,10 +118,30 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint de
          每次切歌/停止时，已经提前下好但没听过的那部分就白费了，60 秒在高码率下意味着
          每次切歌最多扔掉十几 MB。链路从 DERP 中继换成直连后（378KB/s）30 秒足够。
        - PREBUF 保持小值 + PREBUF_WAIT=0：起播要快，不为了填满缓冲让人干等 */
-    BASS_SetConfig(BASS_CONFIG_NET_BUFFER, 30000);        /* 30 秒网络缓冲（原 60） */
-    BASS_SetConfig(BASS_CONFIG_NET_PREBUF, 10);           /* 起播目标 10%，且不阻塞 */
-    BASS_SetConfig(BASS_CONFIG_NET_PREBUF_WAIT, 0);
-    BASS_SetConfig(BASS_CONFIG_NET_READTIMEOUT, 30000);   /* 30 秒收不到数据才判死 */
+    /* ★ 官方语义修正（2026-09-20 专家核对）：没开 BASS_STREAM_BLOCK 时，NET_BUFFER **不是**
+       「滚动余量」——它只是 PREBUF 的基数与恢复水位；没开 BLOCK 时 BASS 会把整首文件下完并保留
+       （所以内存会随文件线性增长，120MB WAV 全在 native 堆里）。
+       因此 15s×20% = 3s 起播余量，与旧配置 30s×10% 完全等效，但起播恢复门槛更清楚。 */
+    BASS_SetConfig(BASS_CONFIG_NET_BUFFER, 15000);
+    BASS_SetConfig(BASS_CONFIG_NET_PREBUF, 20);           /* 起播/恢复目标 20% */
+    BASS_SetConfig(BASS_CONFIG_NET_PREBUF_WAIT, 0);       /* 不阻塞 BASS_ChannelPlay（否则主线程 ANR） */
+    BASS_SetConfig(BASS_CONFIG_NET_READTIMEOUT, 30000);   /* 30 秒收不到数据才判死（不要调小：慢链路会被误杀） */
+    /* 显式声明：updateperiod 默认就是 100ms（省电端，别再降）；通道缓冲 1s 抗调度抖动，音乐无感 */
+    BASS_SetConfig(BASS_CONFIG_UPDATEPERIOD, 100);
+    BASS_SetConfig(BASS_CONFIG_BUFFER, 1000);
+    {   /* 打印生效后的配置，真机日志里可核对 */
+        BASS_INFO info; memset(&info, 0, sizeof(info));
+        BASS_GetInfo(&info);
+        __android_log_print(ANDROID_LOG_WARN, "spbass",
+            "BASS 配置生效: dev_period=%d dev_buffer=%d updateperiod=%d buffer=%d net_buffer=%d prebuf=%d freq=%d minbuf=%d",
+            (int) BASS_GetConfig(BASS_CONFIG_DEV_PERIOD),
+            (int) BASS_GetConfig(BASS_CONFIG_DEV_BUFFER),
+            (int) BASS_GetConfig(BASS_CONFIG_UPDATEPERIOD),
+            (int) BASS_GetConfig(BASS_CONFIG_BUFFER),
+            (int) BASS_GetConfig(BASS_CONFIG_NET_BUFFER),
+            (int) BASS_GetConfig(BASS_CONFIG_NET_PREBUF),
+            (int) info.freq, (int) info.minbuf);
+    }
     return JNI_TRUE;
 }
 
@@ -124,9 +150,10 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz, jint de
    而不是等 Java 侧发现 STOPPED 再整条重建（那样起播/定位都会重来一遍）。 */
 static void sp_enable_resume(HSTREAM h) {
     if (!h) return;
-#ifdef BASS_ATTRIB_NET_RESUME
-    BASS_ChannelSetAttribute((HCHANNEL) h, BASS_ATTRIB_NET_RESUME, 1);
-#endif
+    /* ★ 不要设 BASS_ATTRIB_NET_RESUME=1（2026-09-20 专家指出）：
+       它的含义是「下载缓冲填到 1% 就恢复播放」——30s 缓冲下只填 300ms 数据就恢复，
+       一恢复立刻又 stall，来回抖；而且它会把 PREBUF 的恢复水位覆盖掉。
+       留空即可：BASS 会用 PREBUF(20%) 作为恢复目标，并在支持 Range 的服务器上**自己重连**。 */
 }
 
 JNIEXPORT jlong JNICALL JNI_FN(nativeStreamCreateUrl)(JNIEnv *env, jclass clazz, jstring url) {
