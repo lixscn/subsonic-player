@@ -37,12 +37,15 @@ function Get-Stats {
         $mm = [regex]::Match($line, "$key=\S*\s*\(([^)]*)\)")
         if ($mm.Success) { return $mm.Groups[1].Value } else { return '' }
     }
-    # 流量：netstats 里该 uid 的所有条目
+    # 流量：netstats detail 里，uid 行的下一行起是分桶行，字节字段是 rb=/tb=
+    # （形如 `st=1789812000 rb=5355291 rp=3851 tb=128147 tp=2302`；注意别用 grep -m1 之类会提前退出的管道）
     $ns = & $adb -s $Serial shell "dumpsys netstats detail 2>/dev/null" 2>$null
-    $rx = 0; $tx = 0
+    $rx = 0; $tx = 0; $mine = $false
     foreach ($l in ($ns -split "`n")) {
-        $r = [regex]::Match($l, 'rxBytes=(\d+)'); if ($r.Success) { $rx += [int64]$r.Groups[1].Value }
-        $t = [regex]::Match($l, 'txBytes=(\d+)'); if ($t.Success) { $tx += [int64]$t.Groups[1].Value }
+        if ($l -match 'ident=\[') { $mine = ($l -match "uid=$uid\s") ; continue }
+        if (-not $mine) { continue }
+        $r = [regex]::Match($l, '\brb=(\d+)'); if ($r.Success) { $rx += [int64]$r.Groups[1].Value }
+        $t = [regex]::Match($l, '\btb=(\d+)'); if ($t.Success) { $tx += [int64]$t.Groups[1].Value }
     }
     $bat = & $adb -s $Serial shell "dumpsys battery | grep -E 'level:'" 2>$null
     $level = [int]((($bat -split "`n")[0] -replace '\D', ''))
