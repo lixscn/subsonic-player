@@ -1360,6 +1360,59 @@ public class Player {
         return Math.max(0, Math.min(100, p));
     }
 
+    /**
+     * 把**整个播放队列**缓存到本地（专家说的唯一真正的省电杠杆）。
+     *
+     * <p>命中缓存的曲目在蜂窝上播放时几乎不开射频：一次 44 分钟车程的蜂窝耗电可从
+     * 203mAh 降到 5~15mAh。代价是首次在 WiFi 下多下一遍（用户已接受这个功能）。
+     *
+     * <p>约束：只在 {@link #mayUseDataForPrefetch()} 允许时做（默认「省流」= 仅 WiFi）；
+     * 串行下载，中断/切到蜂窝会立刻停；每首下完打一行日志，界面上能看进度。
+     */
+    public void cacheWholeQueue() {
+        if (!mayUseDataForPrefetch()) {
+            notifyError("当前流量模式不允许缓存（连上 WiFi，或到设置里改流量模式）");
+            return;
+        }
+        final java.util.List<Item> snapshot = new ArrayList<Item>(queue);
+        if (snapshot.isEmpty()) {
+            notifyError("队列是空的");
+            return;
+        }
+        notifyError("开始缓存整个队列（" + snapshot.size() + " 首），可以继续听歌");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int done = 0, skipped = 0, failed = 0;
+                for (Item it : snapshot) {
+                    if (it == null || it.id == null) continue;
+                    if (!mayUseDataForPrefetch()) {
+                        PlayLog.w(TAG, "整队缓存中止：网络已切到计费网络（已下 " + done + " 首）");
+                        break;
+                    }
+                    java.io.File hit = cachedFileIfAny(it);
+                    if (hit != null && hit.exists() && hit.length() > 20000) { skipped++; continue; }
+                    final String url = library.streamUrl(it.id);
+                    if (url == null || url.length() == 0) { failed++; continue; }
+                    java.io.File out = cacheFileFor(it);
+                    if (out == null) { failed++; continue; }
+                    PlayLog.i("整队缓存 " + (done + skipped + failed + 1) + "/" + snapshot.size()
+                            + " song=" + it.id + " " + it.title);
+                    if (downloadToFile(url, out, "整队缓存", it)) done++;
+                    else failed++;
+                }
+                final int d = done, s = skipped, fa = failed;
+                PlayLog.i("整队缓存结束：新下 " + d + " 首，已有 " + s + " 首，失败 " + fa + " 首");
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        notifyError("整队缓存结束：新下 " + d + " 首" + (s > 0 ? "，已有 " + s + " 首" : "")
+                                + (fa > 0 ? "，失败 " + fa + " 首" : ""));
+                    }
+                });
+            }
+        }, "cache-queue").start();
+    }
     private void cacheInBackground(final Item song) {
         if (song == null || song.id == null) return;
         if (!mayUseDataForPrefetch()) return;

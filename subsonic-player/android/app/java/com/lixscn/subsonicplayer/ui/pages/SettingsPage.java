@@ -550,6 +550,14 @@ public class SettingsPage extends Page {
                 act.toast("封面缓存已清除");
             }
         });
+        // ★ 一键缓存整个队列：专家确认这是唯一真正省电的杠杆 ——
+        //   命中缓存的歌在蜂窝上播放几乎不开射频（44 分钟车程 203mAh → 5~15mAh）。
+        choiceRow("缓存整个队列", "开始", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                com.lixscn.subsonicplayer.player.Player.get(act).cacheWholeQueue();
+            }
+        });
         choiceRow("清除列表缓存", "立即清理", new View.OnClickListener() {
             @Override
             public void onClick(View v) {

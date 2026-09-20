@@ -56,6 +56,14 @@ public class SubsonicClient {
 
     private boolean prefixKnown;
     private boolean trailingSlash;
+    /**
+     * 尾斜杠探测结果按 **host** 记住。
+     *
+     * <p>以前 useUrl() 每次都把 prefixKnown 置 false，于是换地址后**每首歌**的第一次
+     * streamUrl()/coverUrl() 都会同步发一个 HEAD /rest/ping（最长 6 秒超时）——
+     * 蜂窝上每次都多一次 TCP+TLS 建连，白耗射频。同一个 host 探过一次就够了。
+     */
+    private final java.util.Map<String, Boolean> slashByHost = new java.util.HashMap<String, Boolean>();
     /** 当前使用的基础地址：会被「切网换地址」在后台线程改写，播放线程也会读，故 volatile */
     private volatile String activeUrl;
 
@@ -130,7 +138,23 @@ public class SubsonicClient {
         while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
         if (u.length() > 0) {
             activeUrl = u;
-            prefixKnown = false;
+            Boolean known = slashByHost.get(hostOf(u));
+            if (known != null) {
+                trailingSlash = known.booleanValue();
+                prefixKnown = true;          // 这个 host 探过了：别再发多余的 HEAD
+            } else {
+                prefixKnown = false;
+            }
+        }
+    }
+
+    /** 取 URL 的 host（用于按 host 缓存探测结果） */
+    private static String hostOf(String url) {
+        try {
+            String h = new java.net.URL(url).getHost();
+            return h == null ? url : h;
+        } catch (Throwable t) {
+            return url;
         }
     }
 
@@ -168,6 +192,7 @@ public class SubsonicClient {
             if (code == 301 || code == 302 || code == 307 || code == 308) {
                 trailingSlash = true;
             }
+            slashByHost.put(hostOf(activeUrl), Boolean.valueOf(trailingSlash));
         } catch (Exception e) {
             // 探测失败就按无尾斜杠处理，后续请求会自动跟随重定向
         }
