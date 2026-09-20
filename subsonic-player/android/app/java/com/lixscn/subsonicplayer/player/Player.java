@@ -867,6 +867,40 @@ public class Player {
      * 请求取回尾部 moov 再播。分流规则见 {@link FormatSupport#engineFor}，理由见 FormatSupport 类注释。
      */
     private void startWithBass(final Item song, final String url) {
+        startWithBass(song, url, true);
+    }
+
+    /**
+     * @param allowAddressGuard 允许「蜂窝 + 内网地址」时先换地址再建流（换完地址的重入传 false，避免来回递归）
+     */
+    private void startWithBass(final Item song, final String url, final boolean allowAddressGuard) {
+        // ★ 蜂窝下却拿到内网地址：BASS 只会一路等到 NET_TIMEOUT（15 秒）才报错，
+        //   当前曲 + 预取两条流就是 30 秒射频白开（专家在 09-20 日志里抓到过两行 耗时=15xxx ms err=40）。
+        //   这里提前换地址，既省电又让起播快十几秒。
+        if (allowAddressGuard && url != null && isMeteredNetwork() && isPrivateHost(url)) {
+            PlayLog.w(TAG, "蜂窝下拿到内网地址，先换地址再建流 song=" + (song == null ? "?" : song.id));
+            notifyError("正在切换网络地址…");
+            library.reconnectAlternate(new Library.Done<Boolean>() {
+                @Override
+                public void ok(Boolean changed) {
+                    final String alt = library.streamUrl(song.id);
+                    if (alt != null && alt.length() > 0 && !alt.equals(url)) {
+                        PlayLog.w(TAG, "已换地址，重新建流 song=" + song.id + " url=" + PlayLog.safeUrl(alt));
+                        startWithBass(song, alt, false);
+                    } else {
+                        PlayLog.w(TAG, "换地址未成功，仍按原地址建流 song=" + song.id);
+                        startWithBass(song, url, false);
+                    }
+                }
+
+                @Override
+                public void fail(String message) {
+                    PlayLog.w(TAG, "换地址失败（" + message + "），仍按原地址建流 song=" + song.id);
+                    startWithBass(song, url, false);
+                }
+            });
+            return;
+        }
         // 拦掉「同一首在建流途中被重复起播」——否则每次都会新起一条流并作废上一条，
         // 界面表现为歌曲被飞快跳过（真机日志：0.5 秒内 8 次）。
         if (buffering && song != null && song.id != null && song.id.equals(bassPendingTrackId)) {
@@ -1474,6 +1508,7 @@ public class Player {
                     PlayLog.w(TAG, tag + "下载中止：网络已切到蜂窝（省流模式）"
                             + "，已下 " + (total / 1024) + " KB");
                     tmp.delete();
+                    prefetchingTrackId = "";   // 失败/中止要清在途标记，否则这首以后永不预取
                     return false;
                 }
                 long ms = Math.max(1, android.os.SystemClock.elapsedRealtime() - t0);
@@ -1494,6 +1529,9 @@ public class Player {
             } catch (Throwable ignored) {
             }
         }
+        // ★ 重试用尽仍失败：清掉在途标记，否则这首以后既不再预取也不再「边播边存」
+        //   （用户以为在缓存，其实早就静默停了；专家在代码里挖出来的）
+        prefetchingTrackId = "";
         return false;
     }
 

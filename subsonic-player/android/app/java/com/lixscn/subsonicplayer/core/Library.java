@@ -511,7 +511,62 @@ public class Library {
     }
 
     public String streamUrl(String songId) {
+        ensureUsableAddress();
         return client == null ? "" : client.streamUrl(songId, settings.networkQuality());
+    }
+
+    /**
+     * 计费网络（蜂窝）下，当前地址若是内网地址就一定连不通（BASS 只会一路等到 15 秒超时，
+     * 当前曲 + 预取两条流就是 30 秒射频白开）。这里在**地址解析的源头**纠正：
+     * 只要是蜂窝 + 内网地址，就直接改用外网地址。
+     *
+     * <p>放在这里而不是各调用点：streamUrl / coverUrl / downloadUrl / 预取 / 边播边存 全都走这条路，
+     * 一处修好全都受益。
+     */
+    private void ensureUsableAddress() {
+        try {
+            Settings.Service svc = settings.currentService();
+            if (svc == null || client == null) return;
+            String cur = client.activeUrl();
+            String wan = norm(svc.wanUrl);
+            if (wan.length() == 0 || !isMetered() || !isPrivateUrl(cur)) return;
+            if (wan.equals(cur)) return;
+            client.useUrl(wan);
+            connectedUrl = wan;
+            PlayLog.w(TAG, "蜂窝下当前是内网地址 → 直接用外网地址 " + PlayLog.safeUrl(wan));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 当前是不是计费网络（蜂窝） */
+    public boolean isMetered() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) appCtx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            android.net.Network n = cm.getActiveNetwork();
+            if (n == null) return false;
+            android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+            return caps != null && !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** URL 是不是局域网地址（蜂窝下必然不可达） */
+    static boolean isPrivateUrl(String url) {
+        if (url == null) return false;
+        try {
+            String host = new java.net.URL(url).getHost();
+            if (host == null) return false;
+            if (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("127.")) return true;
+            if (host.startsWith("172.")) {
+                int second = Integer.parseInt(host.split("\\.")[1]);
+                return second >= 16 && second <= 31;
+            }
+            return host.endsWith(".local");
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     public String downloadUrl(String songId) {

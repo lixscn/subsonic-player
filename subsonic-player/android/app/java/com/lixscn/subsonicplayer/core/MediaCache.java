@@ -40,15 +40,37 @@ public final class MediaCache {
     }
 
     /** 缓存目录（不存在则创建） */
+    /**
+     * 缓存目录：放 filesDir 而不是 cacheDir。
+     *
+     * <p>放 cacheDir 的话系统在存储紧张时会**整个删掉**，用户攒的「零流量」资本随时归零、
+     * 下次全部重下（这恰恰是最费电的一条路）。filesDir 不会被动清，
+     * 由我们自己的 4GB LRU（{@link #prune}）负责回收。
+     */
+    private static File cacheDir(Context ctx) {
+        File base = ctx.getFilesDir();
+        if (base == null) base = ctx.getCacheDir();
+        File d = new File(base, DIR);
+        // 老版本放在 cacheDir 里的缓存：同分区 rename 是瞬时的，先迁移再建目录
+        try {
+            File legacy = new File(ctx.getCacheDir(), DIR);
+            if (!d.exists() && legacy.isDirectory() && legacy.renameTo(d)) {
+                com.lixscn.subsonicplayer.core.PlayLog.w("MediaCache", "缓存目录已迁移到 filesDir");
+            }
+        } catch (Throwable ignored) {
+        }
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
     public static File dir(Context ctx) {
-        File d = new File(ctx.getCacheDir(), DIR);
+        File d = cacheDir(ctx);
         if (!d.exists()) d.mkdirs();
         return d;
     }
 
     /** 当前缓存占用（字节） */
     public static long sizeBytes(Context ctx) {
-        File d = new File(ctx.getCacheDir(), DIR);
+        File d = cacheDir(ctx);
         if (!d.isDirectory()) return 0;
         long total = 0;
         File[] files = d.listFiles();
@@ -62,7 +84,7 @@ public final class MediaCache {
 
     /** 已缓存的曲目数 */
     public static int count(Context ctx) {
-        File d = new File(ctx.getCacheDir(), DIR);
+        File d = cacheDir(ctx);
         File[] files = d.listFiles();
         int n = 0;
         if (files != null) {
@@ -87,7 +109,7 @@ public final class MediaCache {
      * 顺带清掉下载中断留下的 .part 残片（超过 1 小时没动的）。
      */
     public static void prune(Context ctx, long maxBytes) {
-        File d = new File(ctx.getCacheDir(), DIR);
+        File d = cacheDir(ctx);
         if (!d.isDirectory()) return;
         File[] files = d.listFiles();
         if (files == null || files.length == 0) return;
@@ -124,7 +146,7 @@ public final class MediaCache {
 
     /** 清空全部缓存，返回释放的字节数 */
     public static long clear(Context ctx) {
-        File d = new File(ctx.getCacheDir(), DIR);
+        File d = cacheDir(ctx);
         if (!d.isDirectory()) return 0;
         long freed = 0;
         File[] files = d.listFiles();
