@@ -94,10 +94,25 @@ public class PlaybackService extends Service implements Player.Listener {
         player.autoResumeIfKilled();
     }
 
-    /** 用户从最近任务里划掉 App：这是主动收场，别再自动续播 */
+    /**
+     * 用户从最近任务里划掉 App = **关闭**：停播放、收掉前台服务。
+     *
+     * <p>以前这里只清「自动续播」标志，不停播放 —— 前台服务会继续放着。
+     * 之前不容易被发现是因为 MIUI 省电常把进程杀掉；2026-09-20 加了电池白名单、修了内存之后
+     * 服务能活下来了，就表现为「App 都关了音乐还在响」（用户反馈）。
+     * 本 App 没有「关掉界面继续后台放」的承诺，划掉即停才是预期。
+     */
     @Override
     public void onTaskRemoved(Intent rootIntent) {
+        com.lixscn.subsonicplayer.core.PlayLog.w(TAG, "用户划掉任务 → 停止播放并收掉前台服务");
         player.markUserStopped();
+        try {
+            player.pause();
+            stopForegroundCompat();
+            stopSelf();
+        } catch (Throwable t) {
+            com.lixscn.subsonicplayer.core.PlayLog.w(TAG, "onTaskRemoved 收尾失败", t);
+        }
         super.onTaskRemoved(rootIntent);
     }
 
