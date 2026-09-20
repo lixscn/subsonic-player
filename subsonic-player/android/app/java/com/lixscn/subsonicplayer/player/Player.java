@@ -1251,6 +1251,23 @@ public class Player {
         return true;
     }
 
+    /** URL 是不是指向局域网地址（蜂窝下必然连不通，别再试） */
+    static boolean isPrivateHost(String url) {
+        if (url == null) return false;
+        try {
+            String host = new java.net.URL(url).getHost();
+            if (host == null) return false;
+            if (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("127.")) return true;
+            if (host.startsWith("172.")) {
+                int second = Integer.parseInt(host.split("\\.")[1]);
+                return second >= 16 && second <= 31;
+            }
+            return host.endsWith(".local");
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /**
      * 「边播边存」：正在流式播放的曲子，后台整首存进 {@code sp-cache}，下次重播**零流量**。
      *
@@ -1275,6 +1292,13 @@ public class Player {
         if (probe != null && probe.exists() && probe.length() > 20000) return;   // 已缓存
         final String url = library.streamUrl(song.id);
         if (url == null || url.length() == 0) return;
+        // 蜂窝下却拿到内网地址（网络刚切、地址还没更新）→ 直接放弃：
+        // 连不通只会白等 8 秒 ×2 次重试，白白开射频、白耗电
+        // （2026-09-18 的日志里就有一串 `failed to connect to /192.168.0.220 … from /10.10.14.170`）
+        if (isMeteredNetwork() && isPrivateHost(url)) {
+            PlayLog.w(TAG, "边播边存跳过（蜂窝下拿到内网地址，连不通）song=" + song.id);
+            return;
+        }
         prefetchingTrackId = song.id;
         cacheSongId = song.id;          // 进度条据此显示「正在缓存这首」的进度
         cacheDownloaded = 0;
