@@ -386,7 +386,16 @@ public class PlaybackService extends Service implements Player.Listener {
 
     @Override
     public void onProgress(boolean playing, int positionMs, int durationMs) {
-        updateSessionState();
+        // ★ MediaSession 的 setPlaybackState / setMetadata 每次都是一次 binder 调用（会惊动 system_server）。
+        //   原来跟着 500ms 心跳做**全量重建**（metadata + state = 2 次 binder/500ms）。
+        //   现在：状态没变且距上次不足 1 秒就跳过；metadata 只在曲目/推送状态真正变化时才重建
+        //   （见 onTrackChanged / onCastChanged 里的 updateSessionState）。
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (playing != lastSessionPlaying || now - lastSessionAt >= 1000) {
+            lastSessionPlaying = playing;
+            lastSessionAt = now;
+            updateSessionProgress(playing, positionMs);
+        }
         // 播放状态切换时刷新通知（按钮图标需要变）
         if (playing != lastPlaying) {
             lastPlaying = playing;
@@ -398,7 +407,28 @@ public class PlaybackService extends Service implements Player.Listener {
         }
     }
 
+    /** 只推位置与状态，不重建 metadata（省一次 binder 与一次对象分配） */
+    private void updateSessionProgress(boolean playing, long positionMs) {
+        if (session == null) return;
+        com.lixscn.subsonicplayer.core.dlna.DlnaController dc =
+                com.lixscn.subsonicplayer.core.dlna.DlnaController.peek();
+        boolean casting = dc != null && dc.isCasting();
+        boolean p = casting ? dc.remotePlaying() : playing;
+        long pos = casting ? dc.positionMs() : positionMs;
+        int state = p ? PlaybackState.STATE_PLAYING
+                : (player.current() == null ? PlaybackState.STATE_NONE : PlaybackState.STATE_PAUSED);
+        session.setPlaybackState(new PlaybackState.Builder()
+                .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
+                        | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT
+                        | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO
+                        | PlaybackState.ACTION_STOP)
+                .setState(state, pos, p ? 1f : 0f)
+                .build());
+    }
+
     private boolean lastPlaying;
+    private boolean lastSessionPlaying;
+    private long lastSessionAt;
 
     @Override
     public void onQueueChanged() {

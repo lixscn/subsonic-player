@@ -234,6 +234,9 @@ public class Player {
     private int preloadGen;
     /** 已经安排过「后台预下载」的曲目 id（MP4 家族用；失败也不重试，见 prefetchMp4） */
     private volatile String prefetchingTrackId = "";
+    /** 预取失败的曲目与时刻：曲尾那 15 秒里心跳每拍都会调 preloadNext，失败要退避，别反复砸网络 */
+    private volatile String prefetchFailedTrackId = "";
+    private volatile long prefetchFailedAt;
     /** 「边播边存」进度：正在缓存的曲目 id + 已下载字节 + 总字节（给进度条画浅色缓冲段用） */
     private volatile String cacheSongId = "";
     private volatile int cacheDownloaded;
@@ -330,7 +333,10 @@ public class Player {
                     return;
                 }
                 // ③ 中段冻住（st 还是 1）：按断流处理，走下面的重连
-                if ((!nearEnd && (st == 0 || st == 3)) || (!nearEnd && bassFrozenTicks >= 12)) {
+                // ★ st：0=STOPPED 1=PLAYING **2=STALLED** 3=PAUSED（以前这里写 st==3，
+                //   把「暂停」当「卡顿」，真正的卡顿(2)永远匹配不到 → 断流重连形同虚设）
+                boolean stalled = (bassStream != 0) && BassNative.nativeIsStalled(bassStream);
+                if ((!nearEnd && (st == 0 || stalled)) || (!nearEnd && bassFrozenTicks >= 12)) {
                     bassStallTicks++;
                     if (bassStallTicks >= 4) {           // 约 2 秒没恢复
                         bassStallTicks = 0;
@@ -368,7 +374,7 @@ public class Player {
                 //   直到 09:10 用户点亮屏幕触发 resume() 才补上「下一首」）。
                 if (bassStream != 0 || buffering) {
                     main.removeCallbacks(this);      // 保证只有一份在排队
-                    main.postDelayed(this, 500);
+                    main.postDelayed(this, tickIntervalMs());
                 }
                 return;
             }
@@ -401,11 +407,30 @@ public class Player {
                 }
                 maybeScrobble();
                 notifyProgress();
-                main.postDelayed(this, 500);
+                main.postDelayed(this, tickIntervalMs());
             }
         }
     };
 
+    /**
+     * 心跳间隔：**只在「息屏 + 曲子中段」降频到 1500ms**，其余仍是 500ms。
+     *
+     * <p>为什么不能一刀切降频：曲尾判定与断流重连都靠心跳计数（4 拍），
+     * 1.5 秒一拍的话「这首歌放完」最坏要等 6 秒才切下一首 —— 用户会听出空档。
+     * 所以临近曲尾（剩 <8 秒）和缓冲等待时照旧 500ms，只有长时间息屏听歌的
+     * 「安稳中段」才降频，能省掉大部分唤醒与 JNI 往返（CPU 时间是除射频外最大项）。
+     */
+    private int tickIntervalMs() {
+        if (durationMs > 0 && durationMs - positionMs < 8000) return 500;   // 快到了：判结束要快
+        if (buffering) return 500;                                          // 等网络：要快点恢复
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager)
+                    appCtx.getSystemService(Context.POWER_SERVICE);
+            if (pm != null && !pm.isInteractive()) return 1500;             // 息屏中段：省电
+        } catch (Throwable ignored) {
+        }
+        return 500;
+    }
     private Player(Context ctx) {
         this.appCtx = ctx.getApplicationContext();
         this.library = Library.get(appCtx);
@@ -1037,13 +1062,22 @@ public class Player {
                 notifyError("无法获取音频焦点，已暂停（可能有其他应用正在播放）");
                 return;
             }
-            boolean ok = BassNative.nativePlay(bassStream, true);
+            // ★ 建流是异步的：这期间用户可能已按暂停（playWhenReady=false）。
+            //   以前无条件 nativePlay（第二个参数是「是否从头重放」，不是播放/暂停）→ 真的出声，
+            //   但 playing=false（不取唤醒锁、不跑心跳）→「暂停了还在放」且这首放完不会自动切歌。
+            boolean ok;
+            if (playWhenReady) {
+                ok = BassNative.nativePlay(bassStream, true);
+            } else {
+                ok = true;                       // 流建好了但用户已暂停：保持暂停，不要出声
+                PlayLog.w(TAG, "建流完成时用户已暂停，保持暂停 song=" + song.id);
+            }
             playing = ok && playWhenReady;
             if (playing) acquireWake();
             buffering = false;
             PlayLog.w(TAG, "BASS 播放 song=" + song.id + " suffix=" + FormatSupport.suffixOf(song)
                     + " ok=" + ok + " dur=" + BassNative.nativeDurationSec(bassStream));
-            if (!playing) {
+            if (!playing && playWhenReady) {
                 notifyError("BASS 播放失败（错误码 " + BassNative.nativeErrorCode() + "）");
             } else {
                 main.removeCallbacks(ticker);
@@ -1119,6 +1153,10 @@ public class Player {
         Item cur = current();
         final Item next = peekNext();
         if (next == null || cur == null || next.id.equals(cur.id)) return;
+        // 刚刚预取失败过（同一首、1 分钟内）就别再试：心跳每拍都会调到这里，
+        // 没有这行就会在曲尾 15 秒里反复砸网络（每次 DNS+TCP+TLS），白耗射频。
+        if (next.id.equals(prefetchFailedTrackId)
+                && android.os.SystemClock.elapsedRealtime() - prefetchFailedAt < 60000) return;
         // MP4/M4A 流式放不了（moov 在尾部）：预取改成「提前把整首下好」。
         // 它比建流慢得多（整首 vs 几秒缓冲），所以要早开始 —— 只等当前曲目起播 5 秒就让带宽。
         if (FormatSupport.isMp4Family(FormatSupport.suffixOf(next))) {
@@ -1160,8 +1198,12 @@ public class Player {
                     public void run() {
                         bassPreloading = false;
                         if (fh == 0) {
-                            // 预取失败不影响当前播放：切歌时现建流就行，只是慢一点
+                            // 预取失败不影响当前播放：切歌时现建流就行，只是慢一点。
+                            // ★ 但必须记住这次失败：心跳每拍都会调 preloadNext，
+                            //   没有记忆就会在曲尾 15 秒里重试几十次（每次 DNS+TCP+TLS，白耗射频）。
                             PlayLog.i("预取失败 song=" + next.id + " err=" + ferr + " 耗时=" + cost + "ms");
+                            prefetchFailedTrackId = next.id;
+                            prefetchFailedAt = android.os.SystemClock.elapsedRealtime();
                             return;
                         }
                         if (pgen != preloadGen || bassNextStream != 0) {
@@ -1393,7 +1435,9 @@ public class Player {
                 long t0 = android.os.SystemClock.elapsedRealtime();
                 // 后台下载（预取/边播边存）限速：实测不限速时均速只有 114KB/s 却仍在和播放抢带宽，
                 // 会把正在播放的流饿死 → 卡顿。前台下载（用户正等着听）不限速。
-                final long maxBps = "前台".equals(tag) ? 0L : 80L * 1024;
+                // 限速的目的只是「别和播放抢带宽」，不是「省流量」——射频耗电按**开机时间**算，
+        // 所以慢速下载等于把射频窗口拉长（专家实测：80KB/s 时下载窗口 ≈ 播放时长）。160KB/s 为折中。
+        final long maxBps = "前台".equals(tag) ? 0L : 160L * 1024;
                 boolean aborted = false;
                 int tick = 0;
                 while ((n = in.read(buf)) > 0) {
@@ -1471,6 +1515,8 @@ public class Player {
         if (url == null || url.length() == 0) return;
         prefetchingTrackId = song.id;
         PlayLog.i("预下载发起 song=" + song.id + " suffix=" + FormatSupport.suffixOf(song));
+        // ★ 用 try/finally 清标记：以前失败后 prefetchingTrackId 一直留着，
+        //   等于「这首这辈子都不再预取/缓存」，用户以为在缓存其实早停了。
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -1574,7 +1620,15 @@ public class Player {
                 notifyError("无法获取音频焦点，已暂停（可能有其他应用正在播放）");
                 return;
             }
-            boolean ok = BassNative.nativePlay(bassStream, true);
+            // ★ 建流是异步的：这期间用户可能已按暂停（playWhenReady=false）。以前无条件 nativePlay
+            //   → 真的出声，但 playing=false（不取唤醒锁、不跑心跳）→「暂停了还在放」且放完不切歌。
+            boolean ok;
+            if (playWhenReady) {
+                ok = BassNative.nativePlay(bassStream, true);
+            } else {
+                ok = true;                   // 流建好了但用户已暂停：保持暂停、不要出声
+                PlayLog.w(TAG, "建流完成时用户已暂停，保持暂停 song=" + song.id);
+            }
             playing = ok && playWhenReady;
             if (playing) acquireWake();
             buffering = false;
@@ -1644,6 +1698,7 @@ public class Player {
         }
         playing = false;
         main.removeCallbacks(ticker);
+        releaseBassNext();          // 暂停了就别再预取下一首（白耗流量与射频）
         releaseWake();
         abandonFocus();
         notifyProgress();
