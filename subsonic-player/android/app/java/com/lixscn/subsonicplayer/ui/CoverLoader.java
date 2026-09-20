@@ -103,8 +103,13 @@ public class CoverLoader {
     private final Map<String, Long> mFailUntil = new HashMap<String, Long>();
 
     private CoverLoader(Context appContext) {
-        int cacheSize = (int) Math.min((long) Integer.MAX_VALUE,
-                Runtime.getRuntime().maxMemory() / 8);
+        // 内存封面缓存上限：以前是 maxMemory()/8（这台机器上 ~64MB，能装 50+ 张 512px 封面），
+        // 加上列表/歌词缓存，整机 PSS 会冲到 300~380MB —— MIUI 的「自动省电」就专挑这种
+        // 大内存后台进程杀（真机 2026-09-20 被杀 4 次，ApplicationExitInfo 里全是 AutoPowerKill）。
+        // 现在封顶 24MB（约 20 张列表封面 / 6 张大图，LRU 被挤掉也能从磁盘缓存秒解码），
+        // 配合 MainActivity.onTrimMemory 在切到后台时主动清空。
+        long cap = Math.min(Runtime.getRuntime().maxMemory() / 8, 24L * 1024 * 1024);
+        int cacheSize = (int) Math.min((long) Integer.MAX_VALUE, cap);
         mMemory = new LruCache<String, Bitmap>(cacheSize) {
             @Override
             protected int sizeOf(String key, Bitmap value) {

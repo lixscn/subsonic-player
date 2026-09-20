@@ -89,6 +89,16 @@ public class PlaybackService extends Service implements Player.Listener {
         createChannel();
         setupSession();
         setupNoisyReceiver();
+        // 系统（MIUI 省电）杀掉进程后用 START_STICKY 把服务拉起来时，自动接上刚才那首
+        player.restoreLastQueue();
+        player.autoResumeIfKilled();
+    }
+
+    /** 用户从最近任务里划掉 App：这是主动收场，别再自动续播 */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        player.markUserStopped();
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -120,6 +130,7 @@ public class PlaybackService extends Service implements Player.Listener {
                     dc.stopCastingSilently();
                 }
                 player.pause();
+                player.markUserStopped();     // 用户主动停止 → 之后冷启动不要自动续播
                 stopForegroundCompat();
                 stopSelf();
                 return START_NOT_STICKY;

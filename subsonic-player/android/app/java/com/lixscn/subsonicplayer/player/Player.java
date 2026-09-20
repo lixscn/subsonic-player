@@ -37,6 +37,8 @@ public class Player {
 
     private static final String TAG = "Player";
     private static final String PREF = "sp_player";
+    /** 被杀后允许自动续播的时间窗：超过就不接（多半是用户早就关了） */
+    private static final long AUTO_RESUME_WINDOW_MS = 5 * 60 * 1000L;
 
     public static final int MODE_SEQUENTIAL = 0;
     public static final int MODE_SHUFFLE = 1;
@@ -1945,9 +1947,77 @@ public class Player {
                 q.put(s);
             }
             o.put("queue", q);
-            sp.edit().putString("state", o.toString()).apply();
+            o.put("playing", playing);
+            o.put("savedAt", System.currentTimeMillis());
+            // ★ 必须 commit()（同步落盘）而不是 apply()：
+            //   apply() 是异步写盘，MIUI 省电/force-stop 这种**硬杀**会在落盘前把进程干掉，
+            //   实测「存档写了 autoResumeOk=true，10 秒后被杀再启动读出来是 false」，
+            //   连带队列/位置也可能恢复到旧值。存档很小（几 KB），同步写代价可忽略。
+            boolean ok;
+            ok = sp.edit().putString("state", o.toString()).commit();
+            // 正在播 → 记下「这是被系统杀掉时该续播的状态」；
+            // 用户主动划掉任务/按停止会清掉这个标记（见 markUserStopped）
+            if (playing) ok = sp.edit().putBoolean("autoResumeOk", true).commit();
+            PlayLog.w(TAG, "存档 song=" + (cur == null ? "无" : cur.id) + " pos=" + positionMs
+                    + " playing=" + playing + " 落盘=" + ok);
         } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * 冷启动/服务被系统重启时：判断「上次正在播 + 刚刚被系统杀掉」→ 自动续播。
+     *
+     * <p>MIUI 的「自动省电」会在后台直接杀进程（真机 2026-09-20 一天 4 次，
+     * ApplicationExitInfo 里全是 AutoPowerKill，前台服务也照杀），用户听到的就是
+     * 「音乐突然没了」。这里在 5 分钟内接上；用户自己划掉任务或按过停止就不会自动响。
+     */
+    public boolean autoResumeIfKilled() {
+        try {
+            boolean flag = sp.getBoolean("autoResumeOk", false);
+            String raw = sp.getString("state", "");
+            PlayLog.w(TAG, "冷启动续播检查：autoResumeOk=" + flag + " 状态长度="
+                    + (raw == null ? 0 : raw.length()));
+            if (!flag) return false;
+            if (raw == null || raw.length() == 0) {
+                PlayLog.w(TAG, "自动续播跳过：没有持久化状态");
+                sp.edit().putBoolean("autoResumeOk", false).apply();
+                return false;
+            }
+            JSONObject o = new JSONObject(raw);
+            if (!o.optBoolean("playing", false)) {
+                PlayLog.w(TAG, "自动续播跳过：上次不是播放中");
+                sp.edit().putBoolean("autoResumeOk", false).apply();
+                return false;
+            }
+            long savedAt = o.optLong("savedAt", 0);
+            long age = System.currentTimeMillis() - savedAt;
+            if (savedAt <= 0 || age > AUTO_RESUME_WINDOW_MS) {
+                PlayLog.w(TAG, "自动续播跳过：状态太旧（" + (age / 1000) + " 秒）");
+                sp.edit().putBoolean("autoResumeOk", false).apply();
+                return false;
+            }
+            if (current() == null) {
+                PlayLog.w(TAG, "自动续播跳过：没有当前曲目");
+                sp.edit().putBoolean("autoResumeOk", false).apply();
+                return false;
+            }
+            sp.edit().putBoolean("autoResumeOk", false).apply();
+            PlayLog.w(TAG, "检测到上次被系统杀掉时正在播放 → 自动续播 song=" + current().id
+                    + " pos=" + positionMs + "（" + (age / 1000) + " 秒前）");
+            playWhenReady = true;
+            startCurrent(positionMs);
+            return true;
+        } catch (Throwable t) {
+            PlayLog.w(TAG, "自动续播失败", t);
+            return false;
+        }
+    }
+
+    /** 用户主动收场（划掉任务 / 通知栏停止）：不要自动续播 */
+    public void markUserStopped() {
+        PlayLog.w(TAG, "标记用户主动收场（清掉自动续播标志）");
+        // 同样要同步落盘：不然「划掉任务后又被系统拉起」时可能还是旧值 → 自动响了
+        sp.edit().putBoolean("autoResumeOk", false).commit();
     }
 
     /** 启动时恢复上次队列与位置（不自动播放） */

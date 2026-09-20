@@ -94,8 +94,9 @@ public class MainActivity extends Activity implements Player.Listener {
         android.util.Log.w("SubsonicPlayer", "BASS 原生库可用=" + com.lixscn.subsonicplayer.player.bass.BassNative.available());
         Ui.applySystemBars(this);
 
-        // 恢复上次队列（不自动播放）
+        // 恢复上次队列（不自动播放）；但如果是「刚被系统杀掉」，就自动接上（MIUI 省电常干这事）
         player.restoreLastQueue();
+        if (savedInstanceState == null) player.autoResumeIfKilled();
 
         // 无配置时先尝试从外部目录导入配置文件（换机/批量部署/自动化联调用）
         if (!lib.isConfigured()) {
@@ -174,6 +175,26 @@ public class MainActivity extends Activity implements Player.Listener {
         super.onPause();
         if (!stack.isEmpty()) stack.get(stack.size() - 1).onPause();
         player.saveState();
+    }
+
+    /**
+     * 系统要内存时主动吐出来。
+     *
+     * <p>本 App 的内存大头是封面位图（浏览一圈能到几百 MB）。真机 2026-09-20 被 MIUI 的
+     * 「自动省电」在后台杀了 4 次（ApplicationExitInfo: AutoPowerKill），PSS 都 240~370MB。
+     * 切到后台/系统吃紧时清掉封面内存缓存（磁盘缓存还在，回前台秒解码），
+     * 既省内存也不影响观感。
+     */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        try {
+            if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+                CoverLoader.get(this).clearMemory();
+                com.lixscn.subsonicplayer.core.PlayLog.w("MainActivity", "系统要内存（level=" + level + "）→ 清空封面内存缓存");
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
