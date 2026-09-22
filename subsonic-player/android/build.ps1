@@ -73,8 +73,8 @@ $D8         = Join-Path $BuildTools 'd8.bat'
 $ZipAlign   = Join-Path $BuildTools 'zipalign.exe'
 $ApkSigner  = Join-Path $BuildTools 'apksigner.bat'
 
-$VersionCode = 1
-$VersionName = '0.1.0'
+$VersionCode = 2
+$VersionName = '0.2.0'
 $MinSdk      = 29
 $TargetSdk   = 34
 

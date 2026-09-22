@@ -605,7 +605,7 @@ public class SettingsPage extends Page {
         LinearLayout box = Ui.column(act);
         Ui.pad(box, act, 16, 6, 16, 8);
         TextView t1 = Ui.text(act, "Subsonic Player for Android", 14, c.text);
-        TextView t2 = Ui.text(act, "版本 0.1.0 · 纯 Java 原生客户端", 12, c.textDim);
+        TextView t2 = Ui.text(act, "版本 " + appVersion() + " · 纯 Java 原生客户端", 12, c.textDim);
         t2.setPadding(0, Ui.dp(act, 4), 0, 0);
         TextView t3 = Ui.text(act, "支持 Subsonic / OpenSubsonic 兼容服务（Navidrome、Gonic、Jellyfin 等）",
                 12, c.textDim);
@@ -641,5 +641,14 @@ public class SettingsPage extends Page {
             }
         });
         content.addView(box);
+    }
+
+    /** 从包管理器读版本号：别再硬编码（改一次忘一次，关于页会一直是旧号） */
+    private String appVersion() {
+        try {
+            return act.getPackageManager().getPackageInfo(act.getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            return "";
+        }
     }
 }
