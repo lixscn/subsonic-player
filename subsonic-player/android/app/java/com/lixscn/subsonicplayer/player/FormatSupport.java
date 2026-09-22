@@ -98,7 +98,9 @@ public final class FormatSupport {
                 || "ape".equals(suffix) || "wv".equals(suffix)
                 || "mpc".equals(suffix) || "tta".equals(suffix)
                 || "aif".equals(suffix) || "aiff".equals(suffix)
-                || "alac".equals(suffix) || "wma".equals(suffix);
+                // ALAC 从这份名单里移除了：Android 平台（AOSP）自带 ALAC 解码器，
+                // 之前把 alac 列进来是没验证过的假设。现在 ALAC 走系统解码器（见 engineFor）。
+                || "wma".equals(suffix);
     }
 
 
@@ -112,7 +114,21 @@ public final class FormatSupport {
      */
     public static boolean isMp4Family(String suffix) {
         return "m4a".equals(suffix) || "mp4".equals(suffix) || "mp4a".equals(suffix)
-                || "m4b".equals(suffix) || "3gp".equals(suffix);
+                || "m4b".equals(suffix) || "3gp".equals(suffix)
+                || "alac".equals(suffix);   // ALAC 同样装在 MP4 容器里（服务端把 codec 放在 suffix）
+    }
+
+    /**
+     * 是不是 ALAC（Apple 无损）。
+     *
+     * <p>服务端对 m4a 会把 codec 放进 suffix（AAC 是 {@code mp4a.40.2}），ALAC 则是 {@code alac}；
+     * contentType 两边都是 {@code audio/x-m4a}，分不出来。所以判 ALAC 要看 suffix 或 contentType 里有没有 alac。
+     */
+    public static boolean isAlac(Item song) {
+        if (song == null) return false;
+        String s = song.suffix == null ? "" : song.suffix.toLowerCase();
+        String c = song.contentType == null ? "" : song.contentType.toLowerCase();
+        return s.contains("alac") || c.contains("alac");
     }
 
     /**
@@ -128,6 +144,11 @@ public final class FormatSupport {
      * @param bassReady BASS 是否可用（{@code BassNative.available()}）
      */
     public static Engine engineFor(Item song, boolean bassReady) {
+        // ALAC 例外：BASS 能不能解 ALAC 没验证过（本库原先没有 ALAC 文件），
+        // 而 Android 平台自带 ALAC 解码器（AOSP 的 alac decoder + MP4 extractor；
+        // 系统 MediaPlayer 能用 Range 请求取尾部 moov）。所以 ALAC 优先交给系统解码器。
+        // 若实测系统解码器也放不了，再改成 BASS 或入库前转 FLAC（无损转无损）。
+        if (isAlac(song)) return Engine.SYSTEM;
         if (bassReady) return Engine.BASS;
         return fallbackEngineFor(song);
     }
